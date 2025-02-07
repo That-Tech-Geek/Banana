@@ -67,11 +67,11 @@ def extract_text_from_cv(cv_file):
 
 # Generate Interview Questions using Cohere
 def generate_interview_questions(cv_text, job_description):
-    prompt = f"Based on the following job description and applicant's CV, generate relevant interview questions:\n\nJob Description: {job_description}\n\nCV: {cv_text}\n\nInterview Questions:"
+    prompt = f"Based on the following job description and applicant's CV, generate 15 relevant interview questions:\n\nJob Description: {job_description}\n\nCV: {cv_text}\n\nInterview Questions:"
     response = co.generate(
         model="command",
         prompt=prompt,
-        max_tokens=200,
+        max_tokens=20000,
         temperature=0.7
     )
     
