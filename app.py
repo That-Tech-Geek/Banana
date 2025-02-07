@@ -51,6 +51,14 @@ st.title("🍌 Banana: Ultimate Job Search Platform")
 menu = ["Home", "Login", "Sign Up"]
 choice = st.sidebar.selectbox("Menu", menu)
 
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT,
+    role TEXT
+);
+
+
 if choice == "Home":
     st.subheader("Welcome to Banana!")
     st.write("**The applicant-centric job search platform of the future.**")
