@@ -1,23 +1,9 @@
-import streamlit as st
-import sqlite3
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import cohere
-import hashlib
-import datetime
-from PyPDF2 import PdfReader
-import docx
+# Streamlit App
+st.title("🍌 Banana: Ultimate Job Search Platform")
 
-# Initialize Cohere API
-YOUR_COHERE_API_KEY = st.secrets["API"]
-co = cohere.Client(YOUR_COHERE_API_KEY)
-
-# Email Configuration
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-EMAIL_ADDRESS = st.secrets["EMAIL-ADDRESS"]
-EMAIL_PASSWORD = st.secrets["EMAIL-PASSWORD"]
+# Menu Navigation
+menu = ["Home", "Login", "Sign Up"]
+choice = st.sidebar.selectbox("Menu", menu)
 
 # Database Setup
 conn = sqlite3.connect('banana_job_platform.db', check_same_thread=False)
@@ -80,7 +66,6 @@ def generate_cv_summary(cv_text):
     else:
         return "No summary generated, please check the input data."
 
-
 # Generate Interview Questions using Cohere based on CV Summary and Job Description
 def generate_interview_questions(summary, job_description):
     prompt = f"Based on the following job description and applicant's summary, generate 15 relevant interview questions:\n\nJob Description: {job_description}\n\nApplicant Summary: {summary}\n\nInterview Questions. Generate only the questions, and no other text AT ALL."
@@ -101,7 +86,7 @@ def generate_interview_questions(summary, job_description):
 def assess_application(cv_text, job_description, interview_responses):
     # Simplified assessment logic
     score = 0
-    keywords = ["communication", "leadership", "team", "experience"]
+    keywords = ["Python", "communication", "leadership", "team", "experience"]
     
     # Checking if CV contains keywords
     for word in keywords:
@@ -249,29 +234,42 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
             if cv_file:
                 # Extract text from the uploaded CV
                 cv_text = extract_text_from_cv(cv_file)
-                summary = generate_cv_summary(cv_text)
-                st.write(f"**CV Summary:**\n{summary}")
-
-                # Interview Questions Generation
                 job_description = st.session_state["job_description"]
-                questions = generate_interview_questions(summary, job_description)
-                st.write("**Generated Interview Questions:**")
-                st.write(questions)
+                
+                # Generate a summary for the applicant's CV
+                cv_summary = generate_cv_summary(cv_text)
+                st.write("### Applicant Summary:")
+                st.write(cv_summary)
 
-                # Form for application submission
+                # Generate interview questions based on the summary and job description
+                interview_questions = generate_interview_questions(cv_summary, job_description)
+                st.write("### Generated Interview Questions:")
+                st.write(interview_questions)
+                
+                # Collect responses to interview questions
                 responses = []
-                st.subheader("Your Responses to Interview Questions:")
-                for idx, question in enumerate(questions.split("\n")):
-                    response = st.text_area(f"Question {idx+1}: {question}", key=f"response_{idx}")
-                    if response:
-                        responses.append(response)
-
+                for question in interview_questions.split("\n"):
+                    response = st.text_area(f"Response to: {question}", key=question)
+                    responses.append(response)
+                
                 if st.button("Submit Application"):
-                    # Ensure the application data is valid before submission
-                    if st.session_state.get("user") and st.session_state.get("current_job_id") and responses:
-                        c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
-                                  (st.session_state["user"][0], st.session_state["current_job_id"], "\n".join(responses)))
-                        conn.commit()
-                        st.success("Application submitted successfully!")
-                    else:
-                        st.error("Missing required data. Please try again.")
+                    # Store responses in the database
+                    c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
+                              (st.session_state["user"][0], st.session_state["current_job_id"], str(responses)))
+                    conn.commit()
+                    st.success("Your application has been submitted!")
+
+                    # Wait for submit to evaluate the application
+                    if st.button("Evaluate Application"):
+                        application_data = c.execute("SELECT * FROM applications WHERE applicant_id=? AND job_id=?",
+                                                     (st.session_state["user"][0], st.session_state["current_job_id"])).fetchone()
+                        
+                        if application_data:
+                            cv_summary = generate_cv_summary(cv_text)  # Get fresh summary
+                            assessment = assess_application(cv_summary, job_description, responses)
+                            # Update assessment status
+                            c.execute("UPDATE applications SET assessment=? WHERE id=?", (assessment, application_data[0]))
+                            conn.commit()
+                            st.success(f"Application Assessment: {assessment}")
+                        else:
+                            st.error("Application data not found.")
