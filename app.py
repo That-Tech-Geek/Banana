@@ -1,9 +1,26 @@
-# Streamlit App
-st.title("🍌 Banana: Ultimate Job Search Platform")
+import sqlite3
+import hashlib
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import docx
+from PyPDF2 import PdfReader
+import cohere
+import streamlit as st
 
-# Menu Navigation
-menu = ["Home", "Login", "Sign Up"]
-choice = st.sidebar.selectbox("Menu", menu)
+# Cohere API setup (ensure you have a valid API key)
+cohere_api_key = "your-cohere-api-key"  # Make sure this is valid
+try:
+    co = cohere.Client(cohere_api_key)
+except Exception as e:
+    st.error(f"Error initializing Cohere API: {e}")
+    co = None
+
+# Email Settings (configure your email provider)
+EMAIL_ADDRESS = "your-email@example.com"
+EMAIL_PASSWORD = "your-email-password"
+SMTP_SERVER = "smtp.example.com"
+SMTP_PORT = 587
 
 # Database Setup
 conn = sqlite3.connect('banana_job_platform.db', check_same_thread=False)
@@ -53,34 +70,47 @@ def extract_text_from_cv(cv_file):
 
 # Generate a Summary of the Applicant using Cohere
 def generate_cv_summary(cv_text):
-    prompt = f"Summarize the following CV text into a concise and informative summary:\n\n{cv_text}\n\nSummary:"
-    response = co.generate(
-        model="command",
-        prompt=prompt,
-        max_tokens=300,
-        temperature=0.7
-    )
+    if co is None:
+        return "Cohere API is not available."
     
-    if response and hasattr(response, 'generations') and response.generations:
-        return response.generations[0].text.strip()  # Extract summary text
-    else:
-        return "No summary generated, please check the input data."
+    prompt = f"Summarize the following CV text into a concise and informative summary:\n\n{cv_text}\n\nSummary:"
+    try:
+        response = co.generate(
+            model="command",
+            prompt=prompt,
+            max_tokens=300,
+            temperature=0.7
+        )
+        
+        if response and hasattr(response, 'generations') and response.generations:
+            return response.generations[0].text.strip()  # Extract summary text
+        else:
+            return "No summary generated, please check the input data."
+    except cohere.CohereError as e:
+        st.error(f"Cohere API error: {e}")
+        return "Error generating summary. Please try again later."
 
 # Generate Interview Questions using Cohere based on CV Summary and Job Description
 def generate_interview_questions(summary, job_description):
-    prompt = f"Based on the following job description and applicant's summary, generate 15 relevant interview questions:\n\nJob Description: {job_description}\n\nApplicant Summary: {summary}\n\nInterview Questions. Generate only the questions, and no other text AT ALL."
-    response = co.generate(
-        model="command",
-        prompt=prompt,
-        max_tokens=20000,
-        temperature=0.7
-    )
+    if co is None:
+        return "Cohere API is not available."
     
-    # Check if response has choices and extract the generated text correctly
-    if response and hasattr(response, 'generations') and response.generations:
-        return response.generations[0].text.strip()  # Extract text from the first generation
-    else:
-        return "No questions generated, please check the input data."
+    prompt = f"Based on the following job description and applicant's summary, generate 15 relevant interview questions:\n\nJob Description: {job_description}\n\nApplicant Summary: {summary}\n\nInterview Questions. Generate only the questions, and no other text AT ALL."
+    try:
+        response = co.generate(
+            model="command",
+            prompt=prompt,
+            max_tokens=20000,
+            temperature=0.7
+        )
+        
+        if response and hasattr(response, 'generations') and response.generations:
+            return response.generations[0].text.strip()  # Extract text from the first generation
+        else:
+            return "No questions generated, please check the input data."
+    except cohere.CohereError as e:
+        st.error(f"Cohere API error: {e}")
+        return "Error generating interview questions. Please try again later."
 
 # Simple Applicant Assessment Logic (This can be enhanced)
 def assess_application(cv_text, job_description, interview_responses):
@@ -229,47 +259,42 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         if "show_form" in st.session_state and st.session_state["show_form"]:
             # CV upload form
             st.subheader("Upload Your CV")
-            cv_file = st.file_uploader("Choose your CV (PDF or Word)", type=["pdf", "docx"])
+            cv_file = st.file_uploader("Choose your CV", type=["pdf", "docx"])
 
             if cv_file:
-                # Extract text from the uploaded CV
+                # Extract CV text
                 cv_text = extract_text_from_cv(cv_file)
-                job_description = st.session_state["job_description"]
-                
-                # Generate a summary for the applicant's CV
                 cv_summary = generate_cv_summary(cv_text)
-                st.write("### Applicant Summary:")
+
+                st.write("CV Summary:")
                 st.write(cv_summary)
 
-                # Generate interview questions based on the summary and job description
+                job_description = st.session_state["job_description"]
                 interview_questions = generate_interview_questions(cv_summary, job_description)
-                st.write("### Generated Interview Questions:")
-                st.write(interview_questions)
-                
-                # Collect responses to interview questions
-                responses = []
-                for question in interview_questions.split("\n"):
-                    response = st.text_area(f"Response to: {question}", key=question)
-                    responses.append(response)
-                
-                if st.button("Submit Application"):
-                    # Store responses in the database
-                    c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
-                              (st.session_state["user"][0], st.session_state["current_job_id"], str(responses)))
-                    conn.commit()
-                    st.success("Your application has been submitted!")
 
-                    # Wait for submit to evaluate the application
-                    if st.button("Evaluate Application"):
-                        application_data = c.execute("SELECT * FROM applications WHERE applicant_id=? AND job_id=?",
-                                                     (st.session_state["user"][0], st.session_state["current_job_id"])).fetchone()
-                        
-                        if application_data:
-                            cv_summary = generate_cv_summary(cv_text)  # Get fresh summary
-                            assessment = assess_application(cv_summary, job_description, responses)
-                            # Update assessment status
-                            c.execute("UPDATE applications SET assessment=? WHERE id=?", (assessment, application_data[0]))
-                            conn.commit()
-                            st.success(f"Application Assessment: {assessment}")
-                        else:
-                            st.error("Application data not found.")
+                st.subheader("Interview Questions")
+                st.write(interview_questions)
+
+                # Collect responses
+                interview_responses = []
+                for question in interview_questions.split("\n"):
+                    if question.strip():
+                        response = st.text_input(f"Your answer to: {question}")
+                        interview_responses.append(response)
+
+                # Submit button to assess application
+                if st.button("Submit Application"):
+                    application_data = (
+                        st.session_state["user"][0],  # applicant_id
+                        st.session_state["current_job_id"],  # job_id
+                        str(interview_responses)
+                    )
+
+                    c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)", application_data)
+                    conn.commit()
+
+                    # Assess the application
+                    assessment = assess_application(cv_text, job_description, interview_responses)
+                    c.execute("UPDATE applications SET assessment=? WHERE applicant_id=? AND job_id=?", (assessment, application_data[0], application_data[1]))
+                    conn.commit()
+                    st.success(f"Application Assessment: {assessment}")
