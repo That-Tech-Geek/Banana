@@ -160,9 +160,11 @@ elif choice == "Login":
     if st.button("Login"):
         user = authenticate_user(username, password)
         if user:
+            # Store session data
             st.session_state["logged_in"] = True
             st.session_state["user"] = user
             st.session_state["role"] = user[4]
+            st.session_state["username"] = user[1]  # Store username
             st.success(f"Welcome back, {username}!")
         else:
             st.error("Invalid username or password.")
@@ -170,7 +172,9 @@ elif choice == "Login":
 # Dashboard After Login
 if "logged_in" in st.session_state and st.session_state["logged_in"]:
     role = st.session_state["role"]
-    st.sidebar.write(f"Logged in as: {st.session_state['user'][1]} ({role})")
+    username = st.session_state["username"]
+    
+    st.sidebar.write(f"Logged in as: {username} ({role})")
 
     # Applicant Dashboard
     if role == "Applicant":
@@ -226,4 +230,4 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
 
                     # Send confirmation email to applicant
                     send_email("Job Application Confirmation", st.session_state["user"][2],
-                               f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!")
+                               f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!"
