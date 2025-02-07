@@ -6,6 +6,8 @@ from email.mime.multipart import MIMEMultipart
 import cohere
 import hashlib
 import datetime
+from PyPDF2 import PdfReader
+import docx
 
 # Initialize Cohere API
 YOUR_COHERE_API_KEY = st.secrets["API"]
@@ -46,6 +48,34 @@ def send_email(subject, recipient, body):
     except Exception as e:
         st.error(f"Error sending email: {e}")
 
+# CV Text Extraction
+def extract_text_from_cv(cv_file):
+    if cv_file.type == "application/pdf":
+        pdf_reader = PdfReader(cv_file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+        return text
+    elif cv_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        doc = docx.Document(cv_file)
+        text = ""
+        for para in doc.paragraphs:
+            text += para.text + "\n"
+        return text
+    else:
+        return "Unsupported file type"
+
+# Generate Interview Questions using Cohere (or any other language model)
+def generate_interview_questions(cv_text, job_description):
+    prompt = f"Based on the following job description and applicant's CV, generate relevant interview questions:\n\nJob Description: {job_description}\n\nCV: {cv_text}\n\nInterview Questions:"
+    response = co.generate(
+        model="xlarge",
+        prompt=prompt,
+        max_tokens=200,
+        temperature=0.7
+    )
+    return response.text.strip()
+
 # Streamlit App
 st.title("🍌 Banana: Ultimate Job Search Platform")
 
@@ -74,6 +104,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS applications (
                 applicant_id INTEGER,
                 job_id INTEGER,
                 status TEXT DEFAULT 'Applied',
+                responses TEXT,
                 FOREIGN KEY (applicant_id) REFERENCES users (id),
                 FOREIGN KEY (job_id) REFERENCES jobs (id))''')
 
@@ -121,22 +152,8 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
     role = st.session_state["role"]
     st.sidebar.write(f"Logged in as: {st.session_state['user'][1]} ({role})")
 
-    # Recruiter Dashboard
-    if role == "Recruiter":
-        st.header("Recruiter Dashboard")
-        job_title = st.text_input("Job Title")
-        job_description = st.text_area("Job Description")
-        
-        if st.button("Publish Job"):
-            interview_questions = "Sample interview questions generated here."  # Placeholder for Cohere output
-            c.execute("INSERT INTO jobs (recruiter_id, job_title, job_description, interview_questions) VALUES (?, ?, ?, ?)",
-                      (st.session_state["user"][0], job_title, job_description, interview_questions))
-            conn.commit()
-            st.success(f"Job '{job_title}' has been published!")
-            send_email("Job Published Successfully", st.session_state["user"][2], f"Your job '{job_title}' has been published on Banana.")
-
     # Applicant Dashboard
-    elif role == "Applicant":
+    if role == "Applicant":
         st.header("Applicant Dashboard")
         st.subheader("Available Jobs")
 
@@ -149,18 +166,44 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         for job in jobs:
             st.write(f"**{job[2]}** - {job[3]}")
             if st.button(f"Apply for {job[2]}", key=f"apply_{job[0]}"):
-                c.execute("INSERT INTO applications (applicant_id, job_id) VALUES (?, ?)",
-                          (st.session_state["user"][0], job[0]))
-                conn.commit()
-                st.success(f"You have applied for '{job[2]}'!")
-                send_email("Job Application Confirmation", st.session_state["user"][2],
-                           f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for '{job[2]}'. Good luck!")
+                # Store the job ID in the session state
+                st.session_state["current_job_id"] = job[0]
+                st.session_state["job_description"] = job[3]
+                st.session_state["show_form"] = True
 
-        st.subheader("Your Applications")
-        c.execute("""SELECT jobs.job_title, jobs.job_description, applications.status 
-                     FROM applications 
-                     JOIN jobs ON applications.job_id = jobs.id 
-                     WHERE applications.applicant_id=?""", (st.session_state["user"][0],))
-        applications = c.fetchall()
-        for app in applications:
-            st.write(f"**{app[0]}** - {app[1]} (Status: {app[2]})")
+        if "show_form" in st.session_state and st.session_state["show_form"]:
+            # CV upload form
+            st.subheader("Upload Your CV")
+            cv_file = st.file_uploader("Choose your CV (PDF or Word)", type=["pdf", "docx"])
+
+            if cv_file:
+                # Extract text from the uploaded CV
+                cv_text = extract_text_from_cv(cv_file)
+                job_description = st.session_state["job_description"]
+                
+                # Generate interview questions based on CV and job description
+                interview_questions = generate_interview_questions(cv_text, job_description)
+                st.write("### Generated Interview Questions:")
+                st.write(interview_questions)
+
+                # Store the questions in session state to show on the form
+                st.session_state["interview_questions"] = interview_questions.split("\n")
+                
+                # Ask questions and collect responses
+                responses = []
+                for question in st.session_state["interview_questions"]:
+                    response = st.text_input(f"Question: {question}")
+                    responses.append(response)
+
+                if st.button("Submit Application"):
+                    # Save the responses to the database
+                    responses_str = "\n".join(responses)
+                    c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
+                              (st.session_state["user"][0], st.session_state["current_job_id"], responses_str))
+                    conn.commit()
+                    st.success("You have successfully applied for the job!")
+                    st.session_state["show_form"] = False  # Reset form visibility
+
+                    # Send confirmation email to applicant
+                    send_email("Job Application Confirmation", st.session_state["user"][2],
+                               f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!")
