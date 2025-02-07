@@ -81,8 +81,6 @@ def generate_interview_questions(cv_text, job_description):
     else:
         return "No questions generated, please check the input data."
 
-
-
 # Streamlit App
 st.title("🍌 Banana: Ultimate Job Search Platform")
 
@@ -151,6 +149,14 @@ elif choice == "Login":
             st.session_state["user"] = user
             st.session_state["role"] = user[4]
             st.success(f"Welcome back, {username}!")
+
+            # Send email with login credentials
+            user_email = user[2]  # Assuming email is in the 3rd column (index 2)
+            send_email(
+                "Login Details",
+                user_email,
+                f"Hi {username},\n\nYou have successfully logged in to Banana.\n\nUsername: {username}\nPassword: {password}\n\nEnjoy your experience!"
+            )
         else:
             st.error("Invalid username or password.")
 
