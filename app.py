@@ -67,7 +67,7 @@ def extract_text_from_cv(cv_file):
 
 # Generate Interview Questions using Cohere
 def generate_interview_questions(cv_text, job_description):
-    prompt = f"Based on the following job description and applicant's CV, generate 15 relevant interview questions:\n\nJob Description: {job_description}\n\nCV: {cv_text}\n\nInterview Questions:"
+    prompt = f"Based on the following job description and applicant's CV, generate 15 relevant interview questions:\n\nJob Description: {job_description}\n\nCV: {cv_text}\n\nInterview Questions. Generate only the questions, and no other text AT ALL."
     response = co.generate(
         model="command",
         prompt=prompt,
