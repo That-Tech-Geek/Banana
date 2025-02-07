@@ -69,7 +69,7 @@ def extract_text_from_cv(cv_file):
 def generate_interview_questions(cv_text, job_description):
     prompt = f"Based on the following job description and applicant's CV, generate relevant interview questions:\n\nJob Description: {job_description}\n\nCV: {cv_text}\n\nInterview Questions:"
     response = co.generate(
-        model="xlarge",
+        model="command",
         prompt=prompt,
         max_tokens=200,
         temperature=0.7
