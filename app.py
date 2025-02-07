@@ -230,5 +230,4 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                     st.session_state["show_form"] = False  # Reset form visibility
 
                     # Send confirmation email to applicant
-                    send_email("Job Application Confirmation", st.session_state["user"][2],
-                               f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!"
+                    send_email("Job Application Confirmation", st.session_state["user"][2], f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!")
