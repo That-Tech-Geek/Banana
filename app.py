@@ -65,9 +65,24 @@ def extract_text_from_cv(cv_file):
     else:
         return "Unsupported file type"
 
-# Generate Interview Questions using Cohere
-def generate_interview_questions(cv_text, job_description):
-    prompt = f"Based on the following job description and applicant's CV, generate 15 relevant interview questions:\n\nJob Description: {job_description}\n\nCV: {cv_text}\n\nInterview Questions. Generate only the questions, and no other text AT ALL."
+# Generate a Summary of the Applicant using Cohere
+def generate_cv_summary(cv_text):
+    prompt = f"Summarize the following CV text into a concise summary of the individual's experience, skills, and qualifications:\n\n{cv_text}\n\nSummary:"
+    response = co.generate(
+        model="command",
+        prompt=prompt,
+        max_tokens=300,
+        temperature=0.7
+    )
+    
+    if response and hasattr(response, 'generations') and response.generations:
+        return response.generations[0].text.strip()  # Extract summary text
+    else:
+        return "No summary generated, please check the input data."
+
+# Generate Interview Questions using Cohere based on CV Summary and Job Description
+def generate_interview_questions(summary, job_description):
+    prompt = f"Based on the following job description and applicant's summary, generate 15 relevant interview questions:\n\nJob Description: {job_description}\n\nApplicant Summary: {summary}\n\nInterview Questions. Generate only the questions, and no other text AT ALL."
     response = co.generate(
         model="command",
         prompt=prompt,
@@ -80,6 +95,34 @@ def generate_interview_questions(cv_text, job_description):
         return response.generations[0].text.strip()  # Extract text from the first generation
     else:
         return "No questions generated, please check the input data."
+
+# Simple Applicant Assessment Logic (This can be enhanced)
+def assess_application(cv_text, job_description, interview_responses):
+    # Simplified assessment logic
+    score = 0
+    keywords = ["Python", "communication", "leadership", "team", "experience"]
+    
+    # Checking if CV contains keywords
+    for word in keywords:
+        if word.lower() in cv_text.lower():
+            score += 1
+    
+    # Checking if Job Description mentions key areas
+    if "leadership" in job_description.lower():
+        score += 1
+    
+    # Checking if interview responses mention critical qualities
+    for response in interview_responses:
+        if "leadership" in response.lower():
+            score += 1
+        if "communication" in response.lower():
+            score += 1
+    
+    # Decision: If score is above a threshold, consider passing to the next round
+    if score >= 5:
+        return "Passed to next round"
+    else:
+        return "Not selected"
 
 # Streamlit App
 st.title("🍌 Banana: Ultimate Job Search Platform")
@@ -110,6 +153,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS applications (
                 job_id INTEGER,
                 status TEXT DEFAULT 'Applied',
                 responses TEXT,
+                assessment TEXT,
                 FOREIGN KEY (applicant_id) REFERENCES users (id),
                 FOREIGN KEY (job_id) REFERENCES jobs (id))''')
 
@@ -206,35 +250,32 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                 cv_text = extract_text_from_cv(cv_file)
                 job_description = st.session_state["job_description"]
                 
-                # Generate interview questions based on CV and job description
-                interview_questions = generate_interview_questions(cv_text, job_description)
+                # Generate a summary for the applicant's CV using Cohere
+                cv_summary = generate_cv_summary(cv_text)
+                st.write("### Applicant Summary:")
+                st.write(cv_summary)
+
+                # Generate interview questions based on the summary and job description using Cohere
+                interview_questions = generate_interview_questions(cv_summary, job_description)
                 st.write("### Generated Interview Questions:")
                 st.write(interview_questions)
 
-                # Store the questions in session state to show on the form
-                st.session_state["interview_questions"] = interview_questions.split("\n")
-                
-                # Form for responses (collected only once "Submit Application" is clicked)
-                with st.form(key="application_form"):
-                    responses = []
-                    for question in st.session_state["interview_questions"]:
-                        response = st.text_input(f"Question: {question}")
-                        responses.append(response)
+                # Capture and submit responses
+                responses = st.text_area("Provide your responses to the interview questions")
+                if st.button("Submit Application"):
+                    c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
+                              (st.session_state["user"][0], st.session_state["current_job_id"], responses))
+                    conn.commit()
+                    st.success("Application submitted successfully!")
 
-                    submit_button = st.form_submit_button("Submit Application")
-
-                    if submit_button:
-                        # Ensure all fields are filled before submission
-                        if all(responses):
-                            responses_str = "\n".join(responses)
-                            c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
-                                      (st.session_state["user"][0], st.session_state["current_job_id"], responses_str))
-                            conn.commit()
-                            st.success("You have successfully applied for the job!")
-                            st.session_state["show_form"] = False  # Reset form visibility
-
-                            # Send confirmation email to applicant
-                            send_email("Job Application Confirmation", st.session_state["user"][2],
-                                       f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!")
-                        else:
-                            st.error("Please answer all questions before submitting.")
+                    # Show final application assessment
+                    application_status = assess_application(cv_text, job_description, responses.split("\n"))
+                    st.write(f"### Application Status: {application_status}")
+    else:
+        # Recruiter Dashboard
+        st.subheader("Recruiter Dashboard")
+        # Show the recruiter's active job postings
+        c.execute("SELECT * FROM jobs WHERE recruiter_id=?", (st.session_state["user"][0],))
+        jobs = c.fetchall()
+        for job in jobs:
+            st.write(f"**{job[2]}** - {job[3]}")
