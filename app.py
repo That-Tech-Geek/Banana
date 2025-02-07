@@ -214,20 +214,27 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                 # Store the questions in session state to show on the form
                 st.session_state["interview_questions"] = interview_questions.split("\n")
                 
-                # Ask questions and collect responses
-                responses = []
-                for question in st.session_state["interview_questions"]:
-                    response = st.text_input(f"Question: {question}")
-                    responses.append(response)
+                # Form for responses (collected only once "Submit Application" is clicked)
+                with st.form(key="application_form"):
+                    responses = []
+                    for question in st.session_state["interview_questions"]:
+                        response = st.text_input(f"Question: {question}")
+                        responses.append(response)
 
-                if st.button("Submit Application"):
-                    # Save the responses to the database
-                    responses_str = "\n".join(responses)
-                    c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
-                              (st.session_state["user"][0], st.session_state["current_job_id"], responses_str))
-                    conn.commit()
-                    st.success("You have successfully applied for the job!")
-                    st.session_state["show_form"] = False  # Reset form visibility
+                    submit_button = st.form_submit_button("Submit Application")
 
-                    # Send confirmation email to applicant
-                    send_email("Job Application Confirmation", st.session_state["user"][2], f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!")
+                    if submit_button:
+                        # Ensure all fields are filled before submission
+                        if all(responses):
+                            responses_str = "\n".join(responses)
+                            c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
+                                      (st.session_state["user"][0], st.session_state["current_job_id"], responses_str))
+                            conn.commit()
+                            st.success("You have successfully applied for the job!")
+                            st.session_state["show_form"] = False  # Reset form visibility
+
+                            # Send confirmation email to applicant
+                            send_email("Job Application Confirmation", st.session_state["user"][2],
+                                       f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!")
+                        else:
+                            st.error("Please answer all questions before submitting.")
