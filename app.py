@@ -1,21 +1,9 @@
-import sqlite3
-import hashlib
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import docx
-from PyPDF2 import PdfReader
-import cohere
-import streamlit as st
+# Streamlit App
+st.title("🍌 Banana: Ultimate Job Search Platform")
 
-# Cohere API setup (add your API key here)
-co = cohere.Client("your-cohere-api-key")
-
-# Email Settings (configure your email provider)
-EMAIL_ADDRESS = "your-email@example.com"
-EMAIL_PASSWORD = "your-email-password"
-SMTP_SERVER = "smtp.example.com"
-SMTP_PORT = 587
+# Menu Navigation
+menu = ["Home", "Login", "Sign Up"]
+choice = st.sidebar.selectbox("Menu", menu)
 
 # Database Setup
 conn = sqlite3.connect('banana_job_platform.db', check_same_thread=False)
@@ -64,7 +52,6 @@ def extract_text_from_cv(cv_file):
         return "Unsupported file type"
 
 # Generate a Summary of the Applicant using Cohere
-# Generate a Summary of the Applicant using Cohere
 def generate_cv_summary(cv_text):
     prompt = f"Summarize the following CV text into a concise and informative summary:\n\n{cv_text}\n\nSummary:"
     response = co.generate(
@@ -78,7 +65,6 @@ def generate_cv_summary(cv_text):
         return response.generations[0].text.strip()  # Extract summary text
     else:
         return "No summary generated, please check the input data."
-
 
 # Generate Interview Questions using Cohere based on CV Summary and Job Description
 def generate_interview_questions(summary, job_description):
@@ -273,17 +259,17 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                     conn.commit()
                     st.success("Your application has been submitted!")
 
-                # Wait for submit to evaluate the application
-                if st.button("Evaluate Application"):
-                    application_data = c.execute("SELECT * FROM applications WHERE applicant_id=? AND job_id=?",
-                                                 (st.session_state["user"][0], st.session_state["current_job_id"])).fetchone()
-                    
-                    if application_data:
-                        cv_summary = generate_cv_summary(cv_text)  # Get fresh summary
-                        assessment = assess_application(cv_summary, job_description, responses)
-                        # Update assessment status
-                        c.execute("UPDATE applications SET assessment=? WHERE id=?", (assessment, application_data[0]))
-                        conn.commit()
-                        st.success(f"Application Assessment: {assessment}")
-                    else:
-                        st.error("Application data not found.")
+                    # Wait for submit to evaluate the application
+                    if st.button("Evaluate Application"):
+                        application_data = c.execute("SELECT * FROM applications WHERE applicant_id=? AND job_id=?",
+                                                     (st.session_state["user"][0], st.session_state["current_job_id"])).fetchone()
+                        
+                        if application_data:
+                            cv_summary = generate_cv_summary(cv_text)  # Get fresh summary
+                            assessment = assess_application(cv_summary, job_description, responses)
+                            # Update assessment status
+                            c.execute("UPDATE applications SET assessment=? WHERE id=?", (assessment, application_data[0]))
+                            conn.commit()
+                            st.success(f"Application Assessment: {assessment}")
+                        else:
+                            st.error("Application data not found.")
