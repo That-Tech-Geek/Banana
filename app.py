@@ -123,19 +123,34 @@ if choice == "Home":
 # Sign-Up Page
 elif choice == "Sign Up":
     st.subheader("Create an Account")
-    username = st.text_input("Username")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
     role = st.radio("Register as:", ["Applicant", "Recruiter"])
+    
     if st.button("Sign Up"):
         try:
-            c.execute("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)",
-                      (username, email, hash_password(password), role))
-            conn.commit()
-            send_email("Welcome to Banana!", email, f"Hi {username},\n\nThank you for signing up as a {role}. Enjoy your job search journey!")
-            st.success("Account created successfully! Go to Login.")
+            # Check if the email already exists for the chosen role
+            c.execute("SELECT * FROM users WHERE email=? AND role=?", (email, role))
+            existing_user = c.fetchone()
+            if existing_user:
+                st.error(f"An account already exists for {role} with this email. Please login or use a different email.")
+            else:
+                # Check if the user already has an account in the opposite role
+                opposite_role = "Applicant" if role == "Recruiter" else "Recruiter"
+                c.execute("SELECT * FROM users WHERE email=? AND role=?", (email, opposite_role))
+                opposite_role_user = c.fetchone()
+                if opposite_role_user:
+                    st.error(f"An account already exists for the opposite role ({opposite_role}) with this email.")
+                else:
+                    # Register the user
+                    username = st.text_input(f"{role} Username")
+                    c.execute("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)",
+                              (username, email, hash_password(password), role))
+                    conn.commit()
+                    send_email("Welcome to Banana!", email, f"Hi {username},\n\nThank you for signing up as a {role}. Enjoy your job search journey!")
+                    st.success(f"Account created successfully as a {role}! Go to Login.")
         except sqlite3.IntegrityError:
-            st.error("Username or email already exists. Please choose a different one.")
+            st.error("Error creating account. Please try again.")
 
 # Login Page
 elif choice == "Login":
@@ -149,14 +164,6 @@ elif choice == "Login":
             st.session_state["user"] = user
             st.session_state["role"] = user[4]
             st.success(f"Welcome back, {username}!")
-
-            # Send email with login credentials
-            user_email = user[2]  # Assuming email is in the 3rd column (index 2)
-            send_email(
-                "Login Details",
-                user_email,
-                f"Hi {username},\n\nYou have successfully logged in to Banana.\n\nUsername: {username}\nPassword: {password}\n\nEnjoy your experience!"
-            )
         else:
             st.error("Invalid username or password.")
 
