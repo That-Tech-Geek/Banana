@@ -64,6 +64,7 @@ def extract_text_from_cv(cv_file):
         return "Unsupported file type"
 
 # Generate a Summary of the Applicant using Cohere
+# Generate a Summary of the Applicant using Cohere
 def generate_cv_summary(cv_text):
     prompt = f"Summarize the following CV text into a concise and informative summary:\n\n{cv_text}\n\nSummary:"
     response = co.generate(
@@ -77,6 +78,7 @@ def generate_cv_summary(cv_text):
         return response.generations[0].text.strip()  # Extract summary text
     else:
         return "No summary generated, please check the input data."
+
 
 # Generate Interview Questions using Cohere based on CV Summary and Job Description
 def generate_interview_questions(summary, job_description):
