@@ -147,8 +147,9 @@ elif choice == "Sign Up":
                     c.execute("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)",
                               (username, email, hash_password(password), role))
                     conn.commit()
-                    send_email("Welcome to Banana!", email, f"Hi {username},\n\nThank you for signing up as a {role}. Enjoy your job search journey!")
-                    st.success(f"Account created successfully as a {role}! Go to Login.")
+                    send_email("Job Application Confirmation", st.session_state["user"][2],
+                    f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!")
+
         except sqlite3.IntegrityError:
             st.error("Error creating account. Please try again.")
 
