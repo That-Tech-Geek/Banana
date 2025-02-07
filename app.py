@@ -100,7 +100,7 @@ def generate_interview_questions(summary, job_description):
 def assess_application(cv_text, job_description, interview_responses):
     # Simplified assessment logic
     score = 0
-    keywords = ["Python", "communication", "leadership", "team", "experience"]
+    keywords = ["communication", "leadership", "team", "experience"]
     
     # Checking if CV contains keywords
     for word in keywords:
@@ -248,34 +248,29 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
             if cv_file:
                 # Extract text from the uploaded CV
                 cv_text = extract_text_from_cv(cv_file)
+                summary = generate_cv_summary(cv_text)
+                st.write(f"**CV Summary:**\n{summary}")
+
+                # Interview Questions Generation
                 job_description = st.session_state["job_description"]
-                
-                # Generate a summary for the applicant's CV using Cohere
-                cv_summary = generate_cv_summary(cv_text)
-                st.write("### Applicant Summary:")
-                st.write(cv_summary)
+                questions = generate_interview_questions(summary, job_description)
+                st.write("**Generated Interview Questions:**")
+                st.write(questions)
 
-                # Generate interview questions based on the summary and job description using Cohere
-                interview_questions = generate_interview_questions(cv_summary, job_description)
-                st.write("### Generated Interview Questions:")
-                st.write(interview_questions)
+                # Form for application submission
+                responses = []
+                st.subheader("Your Responses to Interview Questions:")
+                for idx, question in enumerate(questions.split("\n")):
+                    response = st.text_area(f"Question {idx+1}: {question}", key=f"response_{idx}")
+                    if response:
+                        responses.append(response)
 
-                # Capture and submit responses
-                responses = st.text_area("Provide your responses to the interview questions")
                 if st.button("Submit Application"):
-                    c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
-                              (st.session_state["user"][0], st.session_state["current_job_id"], responses))
-                    conn.commit()
-                    st.success("Application submitted successfully!")
-
-                    # Show final application assessment
-                    application_status = assess_application(cv_text, job_description, responses.split("\n"))
-                    st.write(f"### Application Status: {application_status}")
-    else:
-        # Recruiter Dashboard
-        st.subheader("Recruiter Dashboard")
-        # Show the recruiter's active job postings
-        c.execute("SELECT * FROM jobs WHERE recruiter_id=?", (st.session_state["user"][0],))
-        jobs = c.fetchall()
-        for job in jobs:
-            st.write(f"**{job[2]}** - {job[3]}")
+                    # Ensure the application data is valid before submission
+                    if st.session_state.get("user") and st.session_state.get("current_job_id") and responses:
+                        c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
+                                  (st.session_state["user"][0], st.session_state["current_job_id"], "\n".join(responses)))
+                        conn.commit()
+                        st.success("Application submitted successfully!")
+                    else:
+                        st.error("Missing required data. Please try again.")
