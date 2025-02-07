@@ -1,3 +1,4 @@
 streamlit
 cohere
 PyPDF2
+python-docx
