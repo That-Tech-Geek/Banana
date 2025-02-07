@@ -65,16 +65,23 @@ def extract_text_from_cv(cv_file):
     else:
         return "Unsupported file type"
 
-# Generate Interview Questions using Cohere (or any other language model)
+# Generate Interview Questions using Cohere
 def generate_interview_questions(cv_text, job_description):
     prompt = f"Based on the following job description and applicant's CV, generate relevant interview questions:\n\nJob Description: {job_description}\n\nCV: {cv_text}\n\nInterview Questions:"
     response = co.generate(
-        model="command",
+        model="xlarge",
         prompt=prompt,
         max_tokens=200,
         temperature=0.7
     )
-    return response.text.strip()
+    
+    # Check if response has choices and extract the generated text correctly
+    if response and hasattr(response, 'generations') and response.generations:
+        return response.generations[0].text.strip()  # Extract text from the first generation
+    else:
+        return "No questions generated, please check the input data."
+
+
 
 # Streamlit App
 st.title("🍌 Banana: Ultimate Job Search Platform")
