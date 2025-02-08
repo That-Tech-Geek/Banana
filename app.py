@@ -83,13 +83,13 @@ def init_db():
     
     conn.commit()
     conn.close()
-    
+
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def send_email(subject, body, recipient):
     try:
-        sender_email = st.secrets["EMAIL-ADDRESS"]
+        sender_email = st.secrets["EMAIL"]
         sender_password = st.secrets["EMAIL_PASSWORD"]
         msg = MIMEText(body)
         msg["Subject"] = subject
@@ -122,24 +122,32 @@ def extract_text_from_file(uploaded_file):
             return ""
     return ""
 
-def summarize_cv(cv_text):
+def generate_cv_summary_and_interview_questions(cv_text, job_desc):
     try:
-        co = cohere.Client(st.secrets["API"])
-        response = co.summarize(text=cv_text, length="short")
-        return response.summary
-    except Exception as e:
-        st.error(f"Error summarizing CV: {e}")
-        return cv_text[:200]  # fallback: first 200 characters
+        co = cohere.Client(st.secrets["COHERE_API_KEY"])
+        
+        # Prompt for CV summary and interview questions generation
+        prompt = f"""
+        Given the following CV text and Job Description, please provide a detailed 3-paragraph summary of the candidate's qualifications and skills. Then, based on this summary and the provided Job Description, generate 15 insightful interview questions for the candidate.
 
-def generate_interview_questions(cv_summary, job_desc):
-    try:
-        co = cohere.Client(st.secrets["API"])
-        prompt = f"Based on this CV summary: {cv_summary} and job description: {job_desc}, generate relevant interview questions."
-        response = co.generate(prompt=prompt, max_tokens=100)
-        return response.generations[0].text.strip()
+        CV: {cv_text}
+        
+        Job Description: {job_desc}
+        """
+
+        # Call Cohere's command chatbot for processing
+        response = co.chat(messages=[{"role": "user", "content": prompt}])
+        result = response.generations[0].text.strip()
+
+        # Separate summary and interview questions
+        split_result = result.split("\nInterview Questions:")
+        summary = split_result[0].strip()
+        interview_questions = split_result[1].strip().split("\n") if len(split_result) > 1 else []
+
+        return summary, interview_questions
     except Exception as e:
-        st.error(f"Error generating interview questions: {e}")
-        return "What makes you a good fit for this role?"
+        st.error(f"Error generating summary and interview questions: {e}")
+        return "", []
 
 # ---------------------------
 # Authentication Pages
@@ -276,12 +284,11 @@ def applicant_apply_page():
     if uploaded_cv:
         cv_text = extract_text_from_file(uploaded_cv)
         if cv_text:
-            cv_summary = summarize_cv(cv_text)
+            cv_summary, interview_questions = generate_cv_summary_and_interview_questions(cv_text, job[2])
             st.text_area("CV Summary", value=cv_summary, height=150)
-            job_description = job[2]
-            interview_questions = generate_interview_questions(cv_summary, job_description)
             st.write("Suggested Interview Questions:")
-            st.write(interview_questions)
+            for idx, question in enumerate(interview_questions, 1):
+                st.write(f"{idx}. {question}")
 
             if st.button("Submit Application"):
                 conn = sqlite3.connect("job_platform.db")
