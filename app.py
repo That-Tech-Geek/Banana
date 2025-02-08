@@ -242,7 +242,8 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         st.header("Applicant Dashboard")
         st.subheader("Available Jobs")
 
-        @st.cache(allow_output_mutation=True)
+        # Replace st.cache with st.cache_data for caching job fetching function
+        @st.cache_data
         def fetch_jobs():
             c.execute("SELECT * FROM jobs")
             return c.fetchall()
@@ -261,28 +262,30 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
             if "show_form" in st.session_state and st.session_state["show_form"]:
                 st.subheader("Upload Your CV")
                 cv_file = st.file_uploader("Choose your CV", type=["pdf", "docx"])
-            
-                if cv_file and st.button("Submit CV"):
-                    # Extract and summarize the CV
-                    cv_text = extract_text_from_cv(cv_file)
-                    st.session_state["cv_text"] = cv_text  # Save in session to avoid reprocessing
-                    st.session_state["cv_summary"] = generate_cv_summary(cv_text)
-                    st.session_state["form_submitted"] = True
-            
-                    # Generate interview questions
-                    interview_questions = generate_interview_questions(st.session_state["cv_summary"], st.session_state["job_description"])
-                    st.session_state["interview_questions"] = interview_questions
 
-                    # Display questions
-                    st.text_area("Interview Questions", interview_questions, height=300)
+                if cv_file:
+                    # Only show the submit button once CV is uploaded
+                    st.session_state["cv_file"] = cv_file
 
-                    # Applicant can now fill out responses for assessment
-                    responses = st.text_area("Enter Your Interview Responses")
-                    if st.button("Submit Responses"):
-                        assessment_result = assess_application(cv_text, st.session_state["job_description"], responses.split("\n"))
-                        st.success(f"Assessment Result: {assessment_result}")
+                    if st.button("Submit CV") and "cv_file" in st.session_state:
+                        # Extract and summarize the CV
+                        cv_text = extract_text_from_cv(st.session_state["cv_file"])
+                        st.session_state["cv_text"] = cv_text  # Save in session to avoid reprocessing
+                        st.session_state["cv_summary"] = generate_cv_summary(cv_text)
 
-                        # Save the application record
-                        c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
-                                  (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", responses, assessment_result))
-                        conn.commit()
+                        # Generate interview questions based on CV summary and job description
+                        interview_questions = generate_interview_questions(st.session_state["cv_summary"], st.session_state["job_description"])
+                        st.session_state["interview_questions"] = interview_questions
+
+                        st.text_area("Interview Questions", interview_questions, height=300)
+
+                        responses = st.text_area("Enter Your Interview Responses")
+                        if st.button("Submit Responses"):
+                            # Ensure responses are processed without refresh
+                            assessment_result = assess_application(cv_text, st.session_state["job_description"], responses.split("\n"))
+                            st.success(f"Assessment Result: {assessment_result}")
+
+                            # Save the application record
+                            c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
+                                      (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", responses, assessment_result))
+                            conn.commit()
