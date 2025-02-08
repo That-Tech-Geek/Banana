@@ -258,9 +258,21 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                 st.session_state["job_description"] = job[3]
                 st.session_state["show_form"] = True
 
-        if "show_form" in st.session_state and st.session_state["show_form"]:
-            st.subheader("Upload Your CV")
-            cv_file = st.file_uploader("Choose your CV", type=["pdf", "docx"])
+            if "show_form" in st.session_state and st.session_state["show_form"]:
+                st.subheader("Upload Your CV")
+                cv_file = st.file_uploader("Choose your CV", type=["pdf", "docx"])
+            
+                if cv_file and st.button("Submit CV"):
+                    # Extract and summarize the CV
+                    cv_text = extract_text_from_cv(cv_file)
+                    st.session_state["cv_text"] = cv_text  # Save in session to avoid reprocessing
+                    st.session_state["cv_summary"] = generate_cv_summary(cv_text)
+                    st.session_state["form_submitted"] = True
+            
+            if "form_submitted" in st.session_state and st.session_state["form_submitted"]:
+                st.subheader("Your CV Summary")
+                st.write(st.session_state["cv_summary"])
+
 
             if st.button("Submit CV") and cv_file:
                 # Extract CV text
