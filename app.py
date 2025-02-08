@@ -207,12 +207,6 @@ def reset_password_page(token):
             st.error("Invalid or expired token.")
         conn.close()
 
-# The rest of the code remains unchanged, including the recruiter and applicant dashboards.
-
-if __name__ == "__main__":
-    main() ```python
-# Additional functionalities can be added here, such as user profile management, job search filters, and application history.
-
 # User profile management
 def user_profile(user_id):
     conn = sqlite3.connect('job_platform.db')
@@ -295,3 +289,6 @@ def applicant_dashboard(applicant_id):
                 st.write("CV Summary:", summary)
                 st.write("Generated Interview Questions:", questions)
                 conn.close()
+
+if __name__ == "__main__":
+    main() 
