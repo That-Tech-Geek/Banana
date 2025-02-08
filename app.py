@@ -89,7 +89,7 @@ def hash_password(password):
 
 def send_email(subject, body, recipient):
     try:
-        sender_email = st.secrets["EMAIL"]
+        sender_email = st.secrets["EMAIL-ADDRESS"]
         sender_password = st.secrets["EMAIL_PASSWORD"]
         msg = MIMEText(body)
         msg["Subject"] = subject
@@ -128,7 +128,7 @@ def generate_cv_summary_and_interview_questions(cv_text, job_desc):
     of the CV and 15 interview questions based on the CV and job description.
     """
     try:
-        co = cohere.Client(st.secrets["COHERE_API_KEY"])
+        co = cohere.Client(st.secrets["API"])
         prompt = f"""Given the following CV text and Job Description, please provide a detailed 3-paragraph summary of the candidate's qualifications and skills. Then, based on this summary and the provided Job Description, generate 15 insightful interview questions for the candidate.
 
 CV:
@@ -192,7 +192,7 @@ def evaluate_candidate_fit(cv_text, job_desc, candidate_answers_text):
     for the role based on their interview answers, the provided CV, and job description.
     """
     try:
-        co = cohere.Client(st.secrets["COHERE_API_KEY"])
+        co = cohere.Client(st.secrets["API"])
         prompt = f"""Using the candidate's CV, Job Description, and the following interview answers, evaluate the candidate's overall fit for the role. Provide a rating between 1 and 10 and a brief explanation for the evaluation.
 
 CV:
