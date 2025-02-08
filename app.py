@@ -86,7 +86,7 @@ def generate_cv_summary(cv_text):
             return response.generations[0].text.strip()  # Extract summary text
         else:
             return "No summary generated, please check the input data."
-    except Exception as e:  # Catching a more general exception
+    except Exception as e:
         st.error(f"Error generating CV summary: {e}")
         return "Error generating summary. Please try again later."
 
@@ -108,11 +108,11 @@ def generate_interview_questions(summary, job_description):
             return response.generations[0].text.strip()  # Extract text from the first generation
         else:
             return "No questions generated, please check the input data."
-    except Exception as e:  # Catching a more general exception
+    except Exception as e:
         st.error(f"Error generating interview questions: {e}")
         return "Error generating interview questions. Please try again later."
 
-# Simple Applicant Assessment Logic (This can be enhanced)
+# Simple Applicant Assessment Logic
 def assess_application(cv_text, job_description, interview_responses):
     # Simplified assessment logic
     score = 0
@@ -208,7 +208,7 @@ elif choice == "Sign Up":
                               (username, email, hash_password(password), role))
                     conn.commit()
                     send_email("Job Application Confirmation", email,
-                    f"Hi {username},\n\nYou have successfully created an account as a {role}. Good luck!")
+                               f"Hi {username},\n\nYou have successfully created an account as a {role}. Good luck!")
 
         except sqlite3.IntegrityError:
             st.error("Error creating account. Please try again.")
@@ -251,7 +251,7 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         for job in jobs:
             st.write(f"**{job[2]}** - {job[3]}")
             apply_button = st.button(f"Apply for {job[2]}", key=f"apply_{job[0]}")
-            
+
             if apply_button:
                 # Store the job ID and description in session state
                 st.session_state["current_job_id"] = job[0]
@@ -269,45 +269,20 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                     st.session_state["cv_summary"] = generate_cv_summary(cv_text)
                     st.session_state["form_submitted"] = True
             
-            if "form_submitted" in st.session_state and st.session_state["form_submitted"]:
-                st.subheader("Your CV Summary")
-                st.write(st.session_state["cv_summary"])
+                    # Generate interview questions
+                    interview_questions = generate_interview_questions(st.session_state["cv_summary"], st.session_state["job_description"])
+                    st.session_state["interview_questions"] = interview_questions
 
+                    # Display questions
+                    st.text_area("Interview Questions", interview_questions, height=300)
 
-            if st.button("Submit CV") and cv_file:
-                # Extract CV text
-                cv_text = extract_text_from_cv(cv_file)
-                cv_summary = generate_cv_summary(cv_text)
+                    # Applicant can now fill out responses for assessment
+                    responses = st.text_area("Enter Your Interview Responses")
+                    if st.button("Submit Responses"):
+                        assessment_result = assess_application(cv_text, st.session_state["job_description"], responses.split("\n"))
+                        st.success(f"Assessment Result: {assessment_result}")
 
-                st.write("### CV Summary")
-                st.write(cv_summary)
-
-                job_description = st.session_state["job_description"]
-                interview_questions = generate_interview_questions(cv_summary, job_description)
-
-                st.write("### Generated Interview Questions")
-                st.write(interview_questions)
-
-                # Collect responses
-                interview_responses = []
-                for question in interview_questions.split("\n"):
-                    if question.strip():
-                        response = st.text_input(f"Your answer to: {question}")
-                        interview_responses.append(response)
-
-                # Submit button to assess application
-                if st.button("Submit Application"):
-                    application_data = (
-                        st.session_state["user"][0],  # applicant_id
-                        st.session_state["current_job_id"],  # job_id
-                        str(interview_responses)
-                    )
-
-                    c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)", application_data)
-                    conn.commit()
-
-                    # Assess the application
-                    assessment = assess_application(cv_text, job_description, interview_responses)
-                    c.execute("UPDATE applications SET assessment=? WHERE applicant_id=? AND job_id=?", (assessment, application_data[0], application_data[1]))
-                    conn.commit()
-                    st.success(f"Application Assessment: {assessment}")
+                        # Save the application record
+                        c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
+                                  (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", responses, assessment_result))
+                        conn.commit()
