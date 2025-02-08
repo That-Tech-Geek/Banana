@@ -123,7 +123,7 @@ def extract_text_from_file(uploaded_file):
 
 def generate_cv_summary_and_interview_questions(cv_text, job_desc):
     """
-    Uses Cohere's chat endpoint to produce a 3-paragraph summary of the CV 
+    Uses Cohere's generate endpoint to produce a 3-paragraph summary of the CV 
     and 15 interview questions based on the provided CV and Job Description.
     """
     try:
@@ -149,11 +149,9 @@ Interview Questions:
 ...
 15. [Question 15]
 """
-        # Instead of using a 'prompt' parameter, we pass a messages list.
-        messages = [{"role": "user", "content": prompt}]
-        response = co.chat(
-            model="command-xlarge-chat",  # Adjust model if needed
-            messages=messages,
+        response = co.generate(
+            model="command-xlarge-nightly",  # Adjust the model as needed
+            prompt=prompt,
             max_tokens=600,
             temperature=0.7,
             stop_sequences=["\n\n"]
@@ -189,7 +187,7 @@ Interview Questions:
 
 def evaluate_candidate_fit(cv_text, job_desc, candidate_answers_text):
     """
-    Uses Cohere's generation endpoint to evaluate the candidate's fit
+    Uses Cohere's generate endpoint to evaluate the candidate's fit
     for the role based on their interview answers, the provided CV, and job description.
     """
     try:
@@ -345,7 +343,7 @@ def applicant_apply_page():
     if uploaded_cv:
         cv_text = extract_text_from_file(uploaded_cv)
         if cv_text:
-            # Generate CV summary and interview questions via Cohere Chat
+            # Generate CV summary and interview questions via Cohere generate
             cv_summary, interview_questions = generate_cv_summary_and_interview_questions(cv_text, job[2])
             st.text_area("CV Summary", value=cv_summary, height=150)
             st.write("### Suggested Interview Questions:")
