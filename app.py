@@ -6,6 +6,7 @@ from email.mime.multipart import MIMEMultipart
 import docx
 from PyPDF2 import PdfReader
 import streamlit as st
+import cohere
 
 # Cohere API setup (ensure you have a valid API key)
 cohere_api_key = st.secrets["API"]
