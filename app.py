@@ -144,9 +144,11 @@ def login_page():
             st.write(f"DEBUG: Attempting login with email: {email} and hashed password: {hashed}")
 
             # Execute the query using parameterized inputs
-            c.execute("SELECT id, email, role, name FROM users WHERE email = ? AND password = ?", (email, hashed))
+            c.execute("SELECT id, email, role FROM users WHERE email = ? AND password = ?", (email, hashed))
             user = c.fetchone()
-            conn.close()
+            if user:
+                st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": \"\"}
+
 
             if user:
                 st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": user[3]}
