@@ -13,11 +13,13 @@ import datetime
 # ---------------------------
 # Helper Functions & DB Setup
 # ---------------------------
+
 def init_db():
     conn = sqlite3.connect("job_platform.db")
     c = conn.cursor()
     # Users table: stores basic info and role (Applicant or Recruiter)
     c.execute('''
+        ALTER TABLE users ADD COLUMN name TEXT;
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
