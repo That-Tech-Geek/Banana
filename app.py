@@ -147,8 +147,11 @@ def login_page():
             c.execute("SELECT id, email, role FROM users WHERE email = ? AND password = ?", (email, hashed))
             user = c.fetchone()
             if user:
-                st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": \"\"}
-
+                st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": ""}
+                st.success("Logged in successfully!")
+                st.experimental_rerun()
+            else:
+                st.error("Invalid credentials. Please check your email and password.")
 
             if user:
                 st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": user[3]}
