@@ -133,47 +133,55 @@ def generate_interview_questions(cv_summary, job_desc):
 # Authentication Pages
 # ---------------------------
 def login_page():
+    """Handles user login for the job platform."""
     st.title("Login")
+
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
-    
+
     if st.button("Login"):
-        # Ensure both fields are provided
         if not email or not password:
-            st.error("Please provide both email and password.")
+            st.error("⚠️ Please enter both email and password.")
             return
 
-        # Hash the password for comparison
-        hashed = hash_password(password)
-        
+        hashed_password = hash_password(password)
+
         try:
-            # Open database connection
             conn = sqlite3.connect("job_platform.db")
             c = conn.cursor()
 
-            # Debug: output the values being used for login
-            st.write(f"DEBUG: Attempting login with email: {email} and hashed password: {hashed}")
+            # Ensure the `users` table exists
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT,
+                    email TEXT UNIQUE,
+                    password TEXT,
+                    role TEXT
+                )
+            ''')
+            conn.commit()
 
-            # Execute the query using parameterized inputs
-            c.execute("SELECT id, email, role FROM users WHERE email = ? AND password = ?", (email, hashed))
+            # Fetch user details
+            c.execute("SELECT id, name, email, role FROM users WHERE email = ? AND password = ?", 
+                      (email, hashed_password))
             user = c.fetchone()
-            if user:
-                st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": ""}
-                st.success("Logged in successfully!")
-                st.experimental_rerun()
-            else:
-                st.error("Invalid credentials. Please check your email and password.")
+            conn.close()
 
             if user:
-                st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": user[3]}
-                st.success("Logged in successfully!")
-                st.experimental_rerun()
+                st.session_state.user = {
+                    "id": user[0],
+                    "name": user[1],
+                    "email": user[2],
+                    "role": user[3]
+                }
+                st.success(f"✅ Welcome back, {user[1]}!")
+                st.rerun()  # Updated from experimental_rerun()
             else:
-                st.error("Invalid credentials. Please check your email and password.")
+                st.error("❌ Invalid email or password. Please try again.")
 
-        except Exception as e:
-            st.error(f"An error occurred during login: {e}")
-
+        except sqlite3.Error as e:
+            st.error(f"⚠️ Database error: {e}")
 
 def signup_page():
     st.title("Sign Up")
