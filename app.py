@@ -9,19 +9,16 @@ import cohere
 import streamlit as st
 
 # Cohere API setup (ensure you have a valid API key)
-cohere_api_key = st.secrets.get("API", "")
-if cohere_api_key:
-    try:
-        co = cohere.Client(cohere_api_key)
-    except Exception as e:
-        st.error(f"Error initializing Cohere API: {e}")
-        co = None
-else:
-    st.error("Cohere API key is missing.")
+cohere_api_key = st.secrets["API"]
+try:
+    co = cohere.Client(cohere_api_key)
+except Exception as e:
+    st.error(f"Error initializing Cohere API: {e}")
+    co = None
 
 # Email Settings (configure your email provider)
-EMAIL_ADDRESS = st.secrets.get("EMAIL-ADDRESS", "")
-EMAIL_PASSWORD = st.secrets.get("EMAIL-PASSWORD", "")
+EMAIL_ADDRESS = st.secrets["EMAIL-ADDRESS"]
+EMAIL_PASSWORD = st.secrets["EMAIL-PASSWORD"]
 SMTP_SERVER = "smtp.example.com"
 SMTP_PORT = 587
 
@@ -29,7 +26,7 @@ SMTP_PORT = 587
 conn = sqlite3.connect('banana_job_platform.db', check_same_thread=False)
 c = conn.cursor()
 
-# Utility Functions
+# Utility Functions (unchanged)
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -54,7 +51,6 @@ def send_email(subject, recipient, body):
     except Exception as e:
         st.error(f"Error sending email: {e}")
 
-# CV Text Extraction
 def extract_text_from_cv(cv_file):
     if cv_file.type == "application/pdf":
         pdf_reader = PdfReader(cv_file)
@@ -71,109 +67,11 @@ def extract_text_from_cv(cv_file):
     else:
         return "Unsupported file type"
 
-# Generate a Summary of the Applicant using Cohere
-def generate_cv_summary(cv_text):
-    if co is None:
-        return "Cohere API is not available."
-    
-    prompt = f"Summarize the following CV text into a concise and informative summary:\n\n{cv_text}\n\nSummary:"
-    try:
-        response = co.generate(
-            model="command",
-            prompt=prompt,
-            max_tokens=3000,
-            temperature=0.7
-        )
-        
-        if response and hasattr(response, 'generations') and response.generations:
-            return response.generations[0].text.strip()  # Extract summary text
-        else:
-            return "No summary generated, please check the input data."
-    except Exception as e:
-        st.error(f"Error generating CV summary: {e}")
-        return "Error generating summary. Please try again later."
-
-# Generate Interview Questions using Cohere based on CV Summary and Job Description
-def generate_interview_questions(summary, job_description):
-    if co is None:
-        return "Cohere API is not available."
-    
-    prompt = f"Based on the following job description and applicant's summary, generate 15 relevant interview questions:\n\nJob Description: {job_description}\n\nApplicant Summary: {summary}\n\nInterview Questions. Generate only the questions, and no other text AT ALL."
-    try:
-        response = co.generate(
-            model="command",
-            prompt=prompt,
-            max_tokens=20000,
-            temperature=0.7
-        )
-        
-        if response and hasattr(response, 'generations') and response.generations:
-            return response.generations[0].text.strip()  # Extract text from the first generation
-        else:
-            return "No questions generated, please check the input data."
-    except Exception as e:
-        st.error(f"Error generating interview questions: {e}")
-        return "Error generating interview questions. Please try again later."
-
-# Simple Applicant Assessment Logic
-def assess_application(cv_text, job_description, interview_responses):
-    # Simplified assessment logic
-    score = 0
-    keywords = ["Python", "communication", "leadership", "team", "experience"]
-    
-    # Checking if CV contains keywords
-    for word in keywords:
-        if word.lower() in cv_text.lower():
-            score += 1
-    
-    # Checking if Job Description mentions key areas
-    if "leadership" in job_description.lower():
-        score += 1
-    
-    # Checking if interview responses mention critical qualities
-    for response in interview_responses:
-        if "leadership" in response.lower():
-            score += 1
-        if "communication" in response.lower():
-            score += 1
-    
-    # Decision: If score is above a threshold, consider passing to the next round
-    if score >= 5:
-        return "Passed to next round"
-    else:
-        return "Not selected"
-
-# Streamlit App
-# README content as a string
-readme_content = """
-Welcome to Banana, the applicant-centric job search platform of the future.
-
-## Features
-
-- **Applicant-Centric Design**: Focused on providing a seamless experience for job seekers.
-- **AI-Powered Assessments**: Utilize advanced AI to assess applications and provide feedback.
-- **Interactive Interface**: Engage with an intuitive and user-friendly interface.
-
-## How We Differ from Conventional Job Search Sites
-
-Unlike traditional job search platforms, Banana offers:
-
-- **Personalized Job Matching**: Tailored job recommendations based on your profile and preferences.
-- **Real-Time Application Tracking**: Monitor the status of your applications in real-time.
-- **Skill Development Resources**: Access resources to enhance your skills and improve your employability.
-
-Join us today and take the next step in your career journey with Banana!
-"""
-
-# Display the content on the homepage
-st.title("🍌 Banana: Ultimate Job Search Platform")
-st.markdown(readme_content)
-
-# Menu Navigation
+# Streamlit App: Handling User Login
 menu = ["Home", "Login", "Sign Up"]
 choice = st.sidebar.selectbox("Menu", menu)
 
-# Database Initialization (Create tables if they don’t exist)
+# Database Initialization
 c.execute('''CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
@@ -201,9 +99,9 @@ c.execute('''CREATE TABLE IF NOT EXISTS applications (
 
 conn.commit()
 
-# Home Page
+# Main Menu
 if choice == "Home":
-    st.subheader("Welcome to Banana!")
+    st.title("🍌 Banana: Ultimate Job Search Platform")
     st.write("**The applicant-centric job search platform of the future.**")
 
 # Sign-Up Page
@@ -221,21 +119,13 @@ elif choice == "Sign Up":
             if existing_user:
                 st.error(f"An account already exists for {role} with this email. Please login or use a different email.")
             else:
-                # Check if the user already has an account in the opposite role
-                opposite_role = "Applicant" if role == "Recruiter" else "Recruiter"
-                c.execute("SELECT * FROM users WHERE email=? AND role=?", (email, opposite_role))
-                opposite_role_user = c.fetchone()
-                if opposite_role_user:
-                    st.error(f"An account already exists for the opposite role ({opposite_role}) with this email.")
-                else:
-                    # Register the user
-                    username = st.text_input(f"{role} Username")
-                    c.execute("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)",
-                              (username, email, hash_password(password), role))
-                    conn.commit()
-                    send_email("Job Application Confirmation", email,
-                               f"Hi {username},\n\nYou have successfully created an account as a {role}. Good luck!")
-
+                # Register the user
+                username = st.text_input(f"{role} Username")
+                c.execute("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)",
+                          (username, email, hash_password(password), role))
+                conn.commit()
+                send_email("Job Application Confirmation", email, f"Hi {username},\n\nYou have successfully created an account as a {role}. Good luck!")
+                st.success(f"Account created for {role}!")
         except sqlite3.IntegrityError:
             st.error("Error creating account. Please try again.")
 
@@ -247,16 +137,16 @@ elif choice == "Login":
     if st.button("Login"):
         user = authenticate_user(username, password)
         if user:
-            # Store session data
+            # Storing session data after login
             st.session_state["logged_in"] = True
-            st.session_state["user"] = user
+            st.session_state["user"] = user  # Storing entire user data
             st.session_state["role"] = user[4]
-            st.session_state["username"] = user[1]  # Store username
+            st.session_state["username"] = user[1]  # Storing username
             st.success(f"Welcome back, {username}!")
         else:
             st.error("Invalid username or password.")
 
-# Dashboard After Login
+# Dashboard after login
 if "logged_in" in st.session_state and st.session_state["logged_in"]:
     role = st.session_state["role"]
     username = st.session_state["username"]
@@ -268,7 +158,7 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         st.header("Applicant Dashboard")
         st.subheader("Available Jobs")
 
-        # Fetch jobs from the database
+        # Fetching jobs from the database
         @st.cache_data
         def fetch_jobs():
             c.execute("SELECT * FROM jobs")
@@ -278,25 +168,32 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         for job in jobs:
             st.write(f"**{job[2]}** - {job[3]}")
             apply_button = st.button(f"Apply for {job[2]}", key=f"apply_{job[0]}")
+
             if apply_button:
-                st.session_state["job_id"] = job[0]
-                cv_file = st.file_uploader("Upload your CV", type=["pdf", "docx"])
+                # Storing the job ID and description in session state
+                st.session_state["current_job_id"] = job[0]
+                st.session_state["job_description"] = job[3]
+                cv_file = st.file_uploader("Upload Your CV", type=["pdf", "docx"])
+
                 if cv_file:
                     cv_text = extract_text_from_cv(cv_file)
-                    summary = generate_cv_summary(cv_text)
-                    interview_questions = generate_interview_questions(summary, job[3])
+                    st.session_state["cv_text"] = cv_text
+                    st.session_state["cv_summary"] = generate_cv_summary(cv_text)
 
-                    st.subheader("CV Summary:")
-                    st.write(summary)
-                    st.subheader("Suggested Interview Questions:")
-                    st.write(interview_questions)
-                    responses = st.text_area("Your interview responses:", "")
-                    if st.button("Submit Application"):
-                        # Save the application data
-                        c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
-                                  (st.session_state["user"][0], job[0], responses))
+                    # Generate Interview Questions
+                    interview_questions = generate_interview_questions(st.session_state["cv_summary"], st.session_state["job_description"])
+                    st.markdown("### Interview Questions")
+                    st.text(interview_questions)  # Display questions as static text
+
+                    # Allow applicant to input interview responses
+                    interview_responses = st.text_area("Enter Your Interview Responses", height=300)
+
+                    if st.button("Submit Responses"):
+                        st.session_state["responses"] = interview_responses  # Store responses in session state
+                        assessment_result = assess_application(cv_text, st.session_state["job_description"], interview_responses.split("\n"))
+                        st.success(f"Assessment Result: {assessment_result}")
+
+                        # Save application record
+                        c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
+                                  (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", interview_responses, assessment_result))
                         conn.commit()
-                        st.success("Application submitted!")
-                        send_email("Application Confirmation", st.session_state["user"][2],
-                                   f"Your application for the position '{job[2]}' has been submitted successfully.")
-
