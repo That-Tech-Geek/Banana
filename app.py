@@ -415,7 +415,7 @@ def main():
             applicant_job_listings(
             if "selected_job" in st.session_state:
                 applicant_apply_page()
-
+            )
 # ---------------------------
 # Run the app
 # ---------------------------
