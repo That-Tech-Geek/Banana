@@ -242,7 +242,7 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         st.header("Applicant Dashboard")
         st.subheader("Available Jobs")
 
-        # Replace st.cache with st.cache_data for caching job fetching function
+        # Fetch jobs from the database
         @st.cache_data
         def fetch_jobs():
             c.execute("SELECT * FROM jobs")
@@ -254,38 +254,30 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
             apply_button = st.button(f"Apply for {job[2]}", key=f"apply_{job[0]}")
 
             if apply_button:
-                # Store the job ID and description in session state
+                # Store the job ID and description in session state for further use
                 st.session_state["current_job_id"] = job[0]
                 st.session_state["job_description"] = job[3]
-                st.session_state["show_form"] = True
-
-            if "show_form" in st.session_state and st.session_state["show_form"]:
-                st.subheader("Upload Your CV")
-                cv_file = st.file_uploader("Choose your CV", type=["pdf", "docx"])
+                cv_file = st.file_uploader("Upload Your CV", type=["pdf", "docx"])
 
                 if cv_file:
-                    # Only show the submit button once CV is uploaded
-                    st.session_state["cv_file"] = cv_file
+                    cv_text = extract_text_from_cv(cv_file)
+                    cv_summary = generate_cv_summary(cv_text)
+                    st.session_state["cv_summary"] = cv_summary
 
-                    if st.button("Submit CV") and "cv_file" in st.session_state:
-                        # Extract and summarize the CV
-                        cv_text = extract_text_from_cv(st.session_state["cv_file"])
-                        st.session_state["cv_text"] = cv_text  # Save in session to avoid reprocessing
-                        st.session_state["cv_summary"] = generate_cv_summary(cv_text)
+                    # Display interview questions as static text (uneditable)
+                    interview_questions = generate_interview_questions(st.session_state["cv_summary"], st.session_state["job_description"])
+                    st.markdown("### Interview Questions")
+                    st.text(interview_questions)  # Display questions as static text
 
-                        # Generate interview questions based on CV summary and job description
-                        interview_questions = generate_interview_questions(st.session_state["cv_summary"], st.session_state["job_description"])
-                        st.session_state["interview_questions"] = interview_questions
+                    st.text_area("Enter Your Interview Responses", height=300)  # Allow answers input
 
-                        st.text_area("Interview Questions", interview_questions, height=300)
+                    if st.button("Submit Responses"):
+                        # Ensure responses are processed without refresh
+                        responses = st.session_state["responses"]
+                        assessment_result = assess_application(cv_text, st.session_state["job_description"], responses.split("\n"))
+                        st.success(f"Assessment Result: {assessment_result}")
 
-                        responses = st.text_area("Enter Your Interview Responses")
-                        if st.button("Submit Responses"):
-                            # Ensure responses are processed without refresh
-                            assessment_result = assess_application(cv_text, st.session_state["job_description"], responses.split("\n"))
-                            st.success(f"Assessment Result: {assessment_result}")
-
-                            # Save the application record
-                            c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
-                                      (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", responses, assessment_result))
-                            conn.commit()
+                        # Save the application record
+                        c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
+                                  (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", responses, assessment_result))
+                        conn.commit()
