@@ -71,7 +71,7 @@ def generate_cv_summary(cv_text):
     # Generate a summary of the CV using Cohere
     prompt = f"Summarize the following CV:\n\n{cv_text}\n\nSummary:"
     response = co.generate(
-        model='command',
+        model='xlarge',
         prompt=prompt,
         max_tokens=100,
         temperature=0.7,
@@ -83,7 +83,7 @@ def generate_questionnaire(cv_summary, job_description):
     # Generate questions using Cohere based on the CV summary and job description
     prompt = f"Generate a set of interview questions based on the following CV summary and job description.\n\nCV Summary:\n{cv_summary}\n\nJob Description:\n{job_description}\n\nQuestions:"
     response = co.generate(
-        model='command',
+        model='xlarge',
         prompt=prompt,
         max_tokens=150,
         temperature=0.7,
@@ -234,9 +234,10 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
             if apply_button:
                 st.session_state["current_job_id"] = job[0]
                 st.session_state["job_description"] = job[3]
-                cv_file = st.file_uploader("Upload Your CV", type=["pdf", "docx"])
+                cv_file = st.file_uploader("Upload Your CV", type=["pdf", "docx"], key="cv_uploader")
 
                 if cv_file:
+                    # Extract text from CV
                     cv_text = extract_text_from_cv(cv_file)
                     st.session_state["cv_text"] = cv_text
 
