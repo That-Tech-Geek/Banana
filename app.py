@@ -242,7 +242,7 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         st.header("Applicant Dashboard")
         st.subheader("Available Jobs")
 
-        @st.cache(allow_output_mutation=True)
+        @st.cache_data(allow_output_mutation=True)
         def fetch_jobs():
             c.execute("SELECT * FROM jobs")
             return c.fetchall()
