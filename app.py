@@ -89,7 +89,7 @@ def hash_password(password):
 
 def send_email(subject, body, recipient):
     try:
-        sender_email = st.secrets["EMAIL"]
+        sender_email = st.secrets["EMAIL-ADDRESS"]
         sender_password = st.secrets["EMAIL_PASSWORD"]
         msg = MIMEText(body)
         msg["Subject"] = subject
@@ -124,7 +124,7 @@ def extract_text_from_file(uploaded_file):
 
 def summarize_cv(cv_text):
     try:
-        co = cohere.Client(st.secrets["COHERE_API_KEY"])
+        co = cohere.Client(st.secrets["API"])
         response = co.summarize(text=cv_text, length="short")
         return response.summary
     except Exception as e:
