@@ -5,7 +5,6 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import docx
 from PyPDF2 import PdfReader
-import cohere
 import streamlit as st
 
 # Cohere API setup (ensure you have a valid API key)
@@ -26,7 +25,7 @@ SMTP_PORT = 587
 conn = sqlite3.connect('banana_job_platform.db', check_same_thread=False)
 c = conn.cursor()
 
-# Utility Functions (unchanged)
+# Utility Functions
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -94,6 +93,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS applications (
                 status TEXT DEFAULT 'Applied',
                 responses TEXT,
                 assessment TEXT,
+                rejection_reason TEXT,
                 FOREIGN KEY (applicant_id) REFERENCES users (id),
                 FOREIGN KEY (job_id) REFERENCES jobs (id))''')
 
@@ -119,13 +119,13 @@ elif choice == "Sign Up":
             if existing_user:
                 st.error(f"An account already exists for {role} with this email. Please login or use a different email.")
             else:
-                # Register the user
                 username = st.text_input(f"{role} Username")
-                c.execute("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)",
-                          (username, email, hash_password(password), role))
-                conn.commit()
-                send_email("Job Application Confirmation", email, f"Hi {username},\n\nYou have successfully created an account as a {role}. Good luck!")
-                st.success(f"Account created for {role}!")
+                if username:
+                    c.execute("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)",
+                              (username, email, hash_password(password), role))
+                    conn.commit()
+                    send_email("Job Application Confirmation", email, f"Hi {username},\n\nYou have successfully created an account as a {role}. Good luck!")
+                    st.success(f"Account created for {role}!")
         except sqlite3.IntegrityError:
             st.error("Error creating account. Please try again.")
 
@@ -137,11 +137,10 @@ elif choice == "Login":
     if st.button("Login"):
         user = authenticate_user(username, password)
         if user:
-            # Storing session data after login
             st.session_state["logged_in"] = True
-            st.session_state["user"] = user  # Storing entire user data
+            st.session_state["user"] = user
             st.session_state["role"] = user[4]
-            st.session_state["username"] = user[1]  # Storing username
+            st.session_state["username"] = user[1]
             st.success(f"Welcome back, {username}!")
         else:
             st.error("Invalid username or password.")
@@ -153,12 +152,52 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
 
     st.sidebar.write(f"Logged in as: {username} ({role})")
 
+    # Recruiter Dashboard
+    if role == "Recruiter":
+        st.header("Recruiter Dashboard")
+        st.subheader("Post a Job")
+        
+        job_title = st.text_input("Job Title")
+        job_description = st.text_area("Job Description")
+        interview_questions = st.text_area("Interview Questions (comma-separated)")
+        
+        if st.button("Post Job"):
+            c.execute("INSERT INTO jobs (recruiter_id, job_title, job_description, interview_questions) VALUES (?, ?, ?, ?)",
+                      (st.session_state["user"][0], job_title, job_description, interview_questions))
+            conn.commit()
+            st.success("Job posted successfully!")
+            # Notify all applicants
+            c.execute("SELECT email FROM users WHERE role='Applicant'")
+            applicants = c.fetchall()
+            for applicant in applicants:
+                send_email("New Job Posted", applicant[0], f"A new job '{job_title}' has been posted. Check it out!")
+
+        st.subheader("Review Applications")
+        c.execute("SELECT a.id, a.applicant_id, a.job_id, a.status, a.responses, a.assessment, u.email FROM applications a JOIN users u ON a.applicant_id = u.id WHERE a.job_id IN (SELECT id FROM jobs WHERE recruiter_id=?)", (st.session_state["user"][0],))
+        applications = c.fetchall()
+
+        for application in applications:
+            app_id, applicant_id, job_id, status, responses, assessment, applicant_email = application
+            st.write(f"**Application ID:** {app_id} | **Applicant Email:** {applicant_email} | **Status:** {status}")
+            if st.button(f"Accept Application {app_id}"):
+                c.execute("UPDATE applications SET status='Accepted' WHERE id=?", (app_id,))
+                conn.commit()
+                send_email("Application Status Update", applicant_email, "Congratulations! Your application has been accepted.")
+                st.success(f"Application {app_id} accepted and email sent to {applicant_email}.")
+
+            if st.button(f"Reject Application {app_id}"):
+                rejection_reason = st.text_input("Reason for Rejection", key=f"reason_{app_id}")
+                if rejection_reason and st.button("Submit Rejection"):
+                    c.execute("UPDATE applications SET status='Rejected', rejection_reason=? WHERE id=?", (rejection_reason, app_id))
+                    conn.commit()
+                    send_email("Application Status Update", applicant_email, f"Your application has been rejected. Reason: {rejection_reason}")
+                    st.success(f"Application {app_id} rejected and email sent to {applicant_email}.")
+
     # Applicant Dashboard
-    if role == "Applicant":
+    elif role == "Applicant":
         st.header("Applicant Dashboard")
         st.subheader("Available Jobs")
 
-        # Fetching jobs from the database
         @st.cache_data
         def fetch_jobs():
             c.execute("SELECT * FROM jobs")
@@ -170,7 +209,6 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
             apply_button = st.button(f"Apply for {job[2]}", key=f"apply_{job[0]}")
 
             if apply_button:
-                # Storing the job ID and description in session state
                 st.session_state["current_job_id"] = job[0]
                 st.session_state["job_description"] = job[3]
                 cv_file = st.file_uploader("Upload Your CV", type=["pdf", "docx"])
@@ -178,10 +216,9 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                 if cv_file:
                     cv_text = extract_text_from_cv(cv_file)
                     st.session_state["cv_text"] = cv_text
-                    st.session_state["cv_summary"] = generate_cv_summary(cv_text)
 
                     # Generate Interview Questions
-                    interview_questions = generate_interview_questions(st.session_state["cv_summary"], st.session_state["job_description"])
+                    interview_questions = job[4]  # Fetch interview questions from the job
                     st.markdown("### Interview Questions")
                     st.text(interview_questions)  # Display questions as static text
 
@@ -189,11 +226,14 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                     interview_responses = st.text_area("Enter Your Interview Responses", height=300)
 
                     if st.button("Submit Responses"):
-                        st.session_state["responses"] = interview_responses  # Store responses in session state
-                        assessment_result = assess_application(cv_text, st.session_state["job_description"], interview_responses.split("\n"))
+                        assessment_result = "Assessment Result Placeholder"  # Replace with actual assessment logic
                         st.success(f"Assessment Result: {assessment_result}")
 
                         # Save application record
                         c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
                                   (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", interview_responses, assessment_result))
                         conn.commit()
+                        st.success("Application submitted successfully!")
+
+# Close the database connection when the app ends
+conn.close()
