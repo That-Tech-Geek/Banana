@@ -1,294 +1,417 @@
 import streamlit as st
 import sqlite3
-import pandas as pd
 import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import os
-import PyPDF2
-import docx
 import cohere
-from werkzeug.security import generate_password_hash, check_password_hash
-import uuid
+import hashlib
+from email.mime.text import MIMEText
+from PyPDF2 import PdfReader
+from docx import Document
+from io import BytesIO
+import os
+import datetime
 
-# Initialize Cohere API
-cohere_client = cohere.Client('YOUR_COHERE_API_KEY')
-
-# Database setup
+# ---------------------------
+# Helper Functions & DB Setup
+# ---------------------------
 def init_db():
-    conn = sqlite3.connect('job_platform.db')
+    conn = sqlite3.connect("job_platform.db")
     c = conn.cursor()
+    # Users table: stores basic info and role (Applicant or Recruiter)
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
             email TEXT UNIQUE,
             password TEXT,
             role TEXT
         )
     ''')
+    # Jobs table: includes additional fields for advanced search/filtering
     c.execute('''
         CREATE TABLE IF NOT EXISTS jobs (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT,
             description TEXT,
-            recruiter_id INTEGER,
-            FOREIGN KEY (recruiter_id) REFERENCES users (id)
+            location TEXT,
+            salary INTEGER,
+            remote BOOLEAN,
+            recruiter_id INTEGER
         )
     ''')
+    # Applications table: stores job applications by applicants
     c.execute('''
         CREATE TABLE IF NOT EXISTS applications (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER,
             applicant_id INTEGER,
+            cv_text TEXT,
             status TEXT,
-            interview_response TEXT,
-            FOREIGN KEY (job_id) REFERENCES jobs (id),
-            FOREIGN KEY (applicant_id) REFERENCES users (id)
+            applied_on DATETIME
         )
     ''')
+    # Referrals table (optional additional feature)
     c.execute('''
-        CREATE TABLE IF NOT EXISTS password_reset_tokens (
-            id INTEGER PRIMARY KEY,
-            user_id INTEGER,
-            token TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id)
+        CREATE TABLE IF NOT EXISTS referrals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            referrer_id INTEGER,
+            referred_email TEXT,
+            status TEXT
         )
     ''')
     conn.commit()
     conn.close()
 
-# Email sending function
-def send_email(to_email, subject, body):
-    sender_email = st.secrets["email"]["username"]
-    sender_password = st.secrets["email"]["password"]
-    
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
-    
-    with smtplib.SMTP('smtp.gmail.com', 587) as server:
-        server.starttls()
-        server.login(sender_email, sender_password)
-        server.send_message(msg)
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# CV text extraction
-def extract_text_from_cv(cv_file):
-    if cv_file.type == "application/pdf":
-        reader = PyPDF2.PdfReader(cv_file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text()
-        return text
-    elif cv_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        doc = docx.Document(cv_file)
-        text = "\n".join([para.text for para in doc.paragraphs])
-        return text
+def send_email(subject, body, recipient):
+    try:
+        sender_email = os.getenv("EMAIL")
+        sender_password = os.getenv("EMAIL_PASSWORD")
+        msg = MIMEText(body)
+        msg["Subject"] = subject
+        msg["From"] = sender_email
+        msg["To"] = recipient
+
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, recipient, msg.as_string())
+    except Exception as e:
+        st.error(f"Email sending failed: {e}")
+
+def extract_text_from_file(uploaded_file):
+    if uploaded_file is None:
+        return ""
+    if uploaded_file.type == "application/pdf":
+        try:
+            reader = PdfReader(uploaded_file)
+            return " ".join([page.extract_text() for page in reader.pages if page.extract_text()])
+        except Exception as e:
+            st.error(f"Error reading PDF: {e}")
+            return ""
+    elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        try:
+            doc = Document(uploaded_file)
+            return " ".join([para.text for para in doc.paragraphs])
+        except Exception as e:
+            st.error(f"Error reading DOCX: {e}")
+            return ""
     return ""
 
-# Cohere AI summary and questions generation
-def generate_cv_summary_and_questions(cv_text, job_description):
-    summary_response = cohere_client.summarize(text=cv_text)
-    questions_response = cohere_client.generate(
-        model='xlarge',
-        prompt=f"Generate interview questions based on the following CV summary and job description:\n\nSummary: {summary_response.text}\nJob Description: {job_description}",
-        max_tokens=100
-    )
-    return summary_response.text, questions_response.generations[0].text
+def summarize_cv(cv_text):
+    try:
+        co = cohere.Client(os.getenv("COHERE_API_KEY"))
+        response = co.summarize(text=cv_text, length="short")
+        return response.summary
+    except Exception as e:
+        st.error(f"Error summarizing CV: {e}")
+        return cv_text[:200]  # fallback: first 200 characters
 
-# User authentication
-def authenticate_user(email, password):
-    conn = sqlite3.connect('job_platform.db')
-    c = conn.cursor()
-    c.execute('SELECT * FROM users WHERE email = ?', (email,))
-    user = c.fetchone()
-    conn.close()
-    if user and check_password_hash(user[2], password):
-        return user
-    return None
+def generate_interview_questions(cv_summary, job_desc):
+    try:
+        co = cohere.Client(os.getenv("COHERE_API_KEY"))
+        prompt = f"Based on this CV summary: {cv_summary} and job description: {job_desc}, generate relevant interview questions."
+        response = co.generate(prompt=prompt, max_tokens=100)
+        return response.generations[0].text.strip()
+    except Exception as e:
+        st.error(f"Error generating interview questions: {e}")
+        return "What makes you a good fit for this role?"
 
-# Generate password reset token
-def generate_reset_token(user_id):
-    token = str(uuid.uuid4())
-    conn = sqlite3.connect('job_platform.db')
-    c = conn.cursor()
-    c.execute('INSERT INTO password_reset_tokens (user_id, token) VALUES (?, ?)', (user_id, token))
-    conn.commit()
-    conn.close()
-    return token
-
-# Reset password function
-def reset_password(user_id, new_password):
-    hashed_password = generate_password_hash(new_password)
-    conn = sqlite3.connect('job_platform.db')
-    c = conn.cursor()
-    c.execute('UPDATE users SET password = ? WHERE id = ?', (hashed_password, user_id))
-    conn.commit()
-    conn.close()
-
-# Streamlit app
-def main():
-    st.title("Job Platform Application")
-    init_db()
-    
-    menu = ["Login", "Sign Up", "Forgot Password"]
-    choice = st.sidebar.selectbox("Select an option", menu)
-
-    if choice == "Sign Up":
-        st.subheader("Create an Account")
-        email = st.text_input("Email")
-        password = st.text_input("Password", type='password')
-        role = st.selectbox("Role", ["Applicant", "Recruiter"])
-        
-        if st.button("Sign Up"):
-            hashed_password = generate_password_hash(password)
-            conn = sqlite3.connect('job_platform.db')
-            c = conn.cursor()
-            try:
-                c.execute('INSERT INTO users (email, password, role) VALUES (?, ?, ?)', (email, hashed_password, role))
-                conn.commit()
-                send_email(email, "Account Created", "Your account has been created successfully.")
-                st.success("Account created! Please log in.")
-            except sqlite3.IntegrityError:
-                st.error("Email already exists.")
-            conn.close()
-
-    elif choice == "Login":
-        st.subheader("Login to your account")
-        email = st.text_input("Email")
-        password = st.text_input("Password", type='password')
-        
-        if st.button("Login"):
-            user = authenticate_user(email, password)
-            if user:
-                st.success(f"Welcome {user[3]}!")
-                if user[3] == "Recruiter":
-                    recruiter_dashboard(user[0])
-                else:
-                    applicant_dashboard(user[0])
-            else:
-                st.error("Invalid email or password.")
-
-    elif choice == "Forgot Password":
-        st.subheader("Reset Your Password")
-        email = st.text_input("Enter your email")
-        
-        if st.button("Send Reset Link"):
-            conn = sqlite3.connect('job_platform.db')
-            c = conn.cursor()
-            c.execute('SELECT id FROM users WHERE email = ?', (email,))
-            user = c.fetchone()
-            if user:
-                token = generate_reset_token(user[0])
-                reset_link = f"http://yourapp.com/reset_password?token={token}"
-                send_email(email, "Password Reset Request", f"Click the link to reset your password: {reset_link}")
-                st.success("Reset link sent to your email.")
-            else:
-                st.error("Email not found.")
-            conn.close()
-
-def reset_password_page(token):
-    st.subheader("Reset Password")
-    new_password = st.text_input("New Password", type='password')
-    
-    if st.button("Reset Password"):
-        conn = sqlite3.connect('job_platform.db')
+# ---------------------------
+# Authentication Pages
+# ---------------------------
+def login_page():
+    st.title("Login")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        conn = sqlite3.connect("job_platform.db")
         c = conn.cursor()
-        c.execute('SELECT user_id FROM password_reset_tokens WHERE token = ?', (token,))
+        hashed = hash_password(password)
+        c.execute("SELECT id, email, role, name FROM users WHERE email = ? AND password = ?", (email, hashed))
         user = c.fetchone()
+        conn.close()
         if user:
-            reset_password(user[0], new_password)
-            st.success("Password has been reset successfully.")
-            c.execute('DELETE FROM password_reset_tokens WHERE token = ?', (token,))
-            conn.commit()
+            st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": user[3]}
+            st.success("Logged in successfully!")
+            st.experimental_rerun()
         else:
-            st.error("Invalid or expired token.")
+            st.error("Invalid credentials.")
+
+def signup_page():
+    st.title("Sign Up")
+    name = st.text_input("Name")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    role = st.selectbox("Role", ["Applicant", "Recruiter"])
+    if st.button("Sign Up"):
+        conn = sqlite3.connect("job_platform.db")
+        c = conn.cursor()
+        hashed = hash_password(password)
+        try:
+            c.execute("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)", (name, email, hashed, role))
+            conn.commit()
+            send_email("Welcome to Job Platform", f"Hello {name}, your account has been created successfully!", email)
+            st.success("Account created! Please login.")
+        except sqlite3.IntegrityError:
+            st.error("Email already exists.")
         conn.close()
 
-# User profile management
-def user_profile(user_id):
-    conn = sqlite3.connect('job_platform.db')
-    c = conn.cursor()
-    c.execute('SELECT email, role FROM users WHERE id = ?', (user_id,))
-    user = c.fetchone()
-    conn.close()
-    
-    st.subheader("User  Profile")
-    st.write(f"Email: {user[0]}")
-    st.write(f"Role: {user[1]}")
-    
-    if st.button("Update Email"):
-        new_email = st.text_input("New Email")
-        if new_email:
-            conn = sqlite3.connect('job_platform.db')
-            c = conn.cursor()
-            c.execute('UPDATE users SET email = ? WHERE id = ?', (new_email, user_id))
-            conn.commit()
-            conn.close()
-            st.success("Email updated successfully!")
+def logout():
+    if "user" in st.session_state:
+        del st.session_state.user
+    st.experimental_rerun()
 
-# Job search filters
-def job_search():
-    st.subheader("Search for Jobs")
-    search_term = st.text_input("Search by job title or description")
-    if st.button("Search"):
-        jobs = search_jobs(search_term)
-        for job in jobs:
-            st.write(f"{job[1]} - {job[2]}")
-
-def search_jobs(search_term):
-    conn = sqlite3.connect('job_platform.db')
+# ---------------------------
+# Applicant Pages & Dashboard
+# ---------------------------
+def applicant_job_listings():
+    st.subheader("Job Listings")
+    conn = sqlite3.connect("job_platform.db")
     c = conn.cursor()
-    c.execute('SELECT id, title, description FROM jobs WHERE title LIKE ? OR description LIKE ?', (f'%{search_term}%', f'%{search_term}%'))
+    # Advanced search filters
+    title_filter = st.text_input("Job Title")
+    location_filter = st.text_input("Location")
+    remote_filter = st.selectbox("Remote Option", ["Any", "Yes", "No"])
+    salary_min = st.number_input("Minimum Salary", value=0)
+    salary_max = st.number_input("Maximum Salary", value=1000000)
+    
+    query = "SELECT * FROM jobs WHERE 1=1"
+    params = []
+    if title_filter:
+        query += " AND title LIKE ?"
+        params.append(f"%{title_filter}%")
+    if location_filter:
+        query += " AND location LIKE ?"
+        params.append(f"%{location_filter}%")
+    if remote_filter != "Any":
+        query += " AND remote = ?"
+        params.append(1 if remote_filter == "Yes" else 0)
+    query += " AND salary BETWEEN ? AND ?"
+    params.append(salary_min)
+    params.append(salary_max)
+    
+    c.execute(query, params)
     jobs = c.fetchall()
-    conn.close()
-    return jobs
-
-# Application history for applicants
-def application_history(applicant_id):
-    st.subheader("Application History")
-    applications = get_applications_for_applicant(applicant_id)
-    for app in applications:
-        st.write(f"Applied for {app[1]} - Status: {app[3]}")
-
-def get_applications_for_applicant(applicant_id):
-    conn = sqlite3.connect('job_platform.db')
-    c = conn.cursor()
-    c.execute('''
-        SELECT jobs.title, applications.status
-        FROM applications
-        JOIN jobs ON applications.job_id = jobs.id
-        WHERE applications.applicant_id = ?
-    ''', (applicant_id,))
-    applications = c.fetchall()
-    conn.close()
-    return applications
-
-# Integrate the new functionalities into the applicant dashboard
-def applicant_dashboard(applicant_id):
-    st.subheader("Applicant Dashboard")
-    job_search()
-    application_history(applicant_id)
-    st.write("Available Jobs")
-    jobs = get_available_jobs()
     for job in jobs:
-        st.write(f"{job[1]} - {job[2]}")
-        if st.button(f"Apply for {job[1]}"):
-            cv_file = st.file_uploader("Upload your CV", type=["pdf", "docx"])
-            if cv_file:
-                cv_text = extract_text_from_cv(cv_file)
-                summary, questions = generate_cv_summary_and_questions(cv_text, job[2])
-                conn = sqlite3.connect('job_platform.db')
-                c = conn.cursor()
-                c.execute('INSERT INTO applications (job_id, applicant_id, status) VALUES (?, ?, ?)', (job[0], applicant_id, "Pending"))
-                conn.commit()
-                send_email(job[3], "New Application", f"You have a new application for {job[1]} from {applicant_id}.")
-                st.success("Application submitted successfully!")
-                st.write("CV Summary:", summary)
-                st.write("Generated Interview Questions:", questions)
-                conn.close()
+        st.markdown(f"### {job[1]}")
+        st.write(job[2])
+        st.write(f"Location: {job[3]} | Salary: {job[4]} | Remote: {'Yes' if job[5] else 'No'}")
+        if st.button(f"Apply for {job[1]}", key=f"apply_{job[0]}"):
+            st.session_state.selected_job = job
+            st.experimental_rerun()
+    conn.close()
+
+def applicant_apply_page():
+    job = st.session_state.get("selected_job", None)
+    if not job:
+        st.error("No job selected.")
+        return
+    st.subheader(f"Apply for {job[1]}")
+    st.write(job[2])
+    uploaded_file = st.file_uploader("Upload your CV (PDF/DOCX)", type=["pdf", "docx"])
+    if st.button("Submit Application"):
+        if uploaded_file is None:
+            st.error("Please upload your CV.")
+            return
+        cv_text = extract_text_from_file(uploaded_file)
+        cv_summary = summarize_cv(cv_text)
+        interview_questions = generate_interview_questions(cv_summary, job[2])
+        conn = sqlite3.connect("job_platform.db")
+        c = conn.cursor()
+        c.execute("INSERT INTO applications (job_id, applicant_id, cv_text, status, applied_on) VALUES (?, ?, ?, ?, ?)",
+                  (job[0], st.session_state.user['id'], cv_text, "Pending", datetime.datetime.now()))
+        conn.commit()
+        conn.close()
+        send_email("Application Received",
+                   f"Your application for {job[1]} has been submitted.\n\nInterview Questions:\n{interview_questions}",
+                   st.session_state.user['email'])
+        st.success("Application Submitted Successfully!")
+        if "selected_job" in st.session_state:
+            del st.session_state.selected_job
+        st.experimental_rerun()
+    st.write("---")
+    st.subheader("Interview Preparation")
+    st.write(generate_interview_questions(summarize_cv("dummy"), job[2]))  # demo question if none generated
+
+def applicant_applications():
+    st.subheader("My Applications")
+    conn = sqlite3.connect("job_platform.db")
+    c = conn.cursor()
+    c.execute(
+        "SELECT a.id, j.title, a.status, a.applied_on FROM applications a JOIN jobs j ON a.job_id = j.id WHERE a.applicant_id = ?",
+        (st.session_state.user['id'],))
+    apps = c.fetchall()
+    for app in apps:
+        st.write(f"Application ID: {app[0]} | Job: {app[1]} | Status: {app[2]} | Applied On: {app[3]}")
+    conn.close()
+
+def resume_builder():
+    st.subheader("Resume Builder")
+    name = st.text_input("Name", value=st.session_state.user.get('name', ''))
+    education = st.text_area("Education")
+    experience = st.text_area("Experience")
+    skills = st.text_area("Skills")
+    if st.button("Generate Resume"):
+        resume_text = f"Name: {name}\n\nEducation:\n{education}\n\nExperience:\n{experience}\n\nSkills:\n{skills}"
+        st.text_area("Your Resume", value=resume_text, height=300)
+
+def interview_simulation():
+    st.subheader("Interview Simulation")
+    sample_question = "Can you describe a challenging situation at work and how you handled it?"
+    st.write(f"**Interview Question:** {sample_question}")
+    response = st.text_area("Your Answer")
+    if st.button("Submit Answer"):
+        try:
+            co = cohere.Client(os.getenv("COHERE_API_KEY"))
+            prompt = f"Provide constructive feedback for the following answer: {response}"
+            feedback_response = co.generate(prompt=prompt, max_tokens=50)
+            feedback = feedback_response.generations[0].text.strip()
+        except Exception as e:
+            feedback = "Feedback generation failed."
+        st.write(f"**Feedback:** {feedback}")
+
+def career_chatbot():
+    st.subheader("Career Guidance Chatbot")
+    user_input = st.text_input("Ask a career-related question")
+    if st.button("Get Advice"):
+        try:
+            co = cohere.Client(os.getenv("COHERE_API_KEY"))
+            prompt = f"You are a career guidance expert. Answer the following question: {user_input}"
+            response = co.generate(prompt=prompt, max_tokens=100)
+            advice = response.generations[0].text.strip()
+        except Exception as e:
+            advice = "Sorry, I couldn't generate advice at this time."
+        st.write(advice)
+
+def applicant_dashboard():
+    menu = st.sidebar.radio("Navigation", 
+                            ["Job Listings", "Apply for Job", "My Applications", 
+                             "Resume Builder", "Interview Simulation", "Career Chatbot", "Logout"])
+    if menu == "Job Listings":
+        applicant_job_listings()
+    elif menu == "Apply for Job":
+        applicant_apply_page()
+    elif menu == "My Applications":
+        applicant_applications()
+    elif menu == "Resume Builder":
+        resume_builder()
+    elif menu == "Interview Simulation":
+        interview_simulation()
+    elif menu == "Career Chatbot":
+        career_chatbot()
+    elif menu == "Logout":
+        logout()
+
+# ---------------------------
+# Recruiter Pages & Dashboard
+# ---------------------------
+def recruiter_post_job():
+    st.subheader("Post a New Job")
+    title = st.text_input("Job Title")
+    description = st.text_area("Job Description")
+    location = st.text_input("Location")
+    salary = st.number_input("Salary", value=0)
+    remote = st.selectbox("Remote", ["Yes", "No"]) == "Yes"
+    if st.button("Post Job"):
+        conn = sqlite3.connect("job_platform.db")
+        c = conn.cursor()
+        c.execute("INSERT INTO jobs (title, description, location, salary, remote, recruiter_id) VALUES (?, ?, ?, ?, ?, ?)",
+                  (title, description, location, salary, remote, st.session_state.user['id']))
+        conn.commit()
+        conn.close()
+        st.success("Job Posted Successfully!")
+
+def recruiter_view_jobs():
+    st.subheader("Your Posted Jobs")
+    conn = sqlite3.connect("job_platform.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM jobs WHERE recruiter_id = ?", (st.session_state.user['id'],))
+    jobs = c.fetchall()
+    for job in jobs:
+        st.markdown(f"### {job[1]}")
+        st.write(job[2])
+        st.write(f"Location: {job[3]} | Salary: {job[4]} | Remote: {'Yes' if job[5] else 'No'}")
+    conn.close()
+
+def recruiter_manage_applications():
+    st.subheader("Manage Applications")
+    conn = sqlite3.connect("job_platform.db")
+    c = conn.cursor()
+    # Fetch jobs posted by this recruiter
+    c.execute("SELECT id, title FROM jobs WHERE recruiter_id = ?", (st.session_state.user['id'],))
+    jobs = c.fetchall()
+    for job in jobs:
+        st.markdown(f"#### Applications for {job[1]}")
+        c.execute("SELECT a.id, u.name, u.email, a.status FROM applications a JOIN users u ON a.applicant_id = u.id WHERE a.job_id = ?", (job[0],))
+        apps = c.fetchall()
+        for app in apps:
+            st.write(f"Application ID: {app[0]} | Applicant: {app[1]} | Email: {app[2]} | Status: {app[3]}")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button(f"Accept {app[0]}", key=f"accept_{app[0]}"):
+                    c.execute("UPDATE applications SET status = ? WHERE id = ?", ("Accepted", app[0]))
+                    conn.commit()
+                    send_email("Application Update",
+                               f"Your application for {job[1]} has been accepted.",
+                               app[2])
+                    st.success("Application Accepted")
+            with col2:
+                if st.button(f"Reject {app[0]}", key=f"reject_{app[0]}"):
+                    c.execute("UPDATE applications SET status = ? WHERE id = ?", ("Rejected", app[0]))
+                    conn.commit()
+                    send_email("Application Update",
+                               f"Your application for {job[1]} has been rejected.",
+                               app[2])
+                    st.error("Application Rejected")
+    conn.close()
+
+def recruiter_analytics():
+    st.subheader("Application Analytics")
+    conn = sqlite3.connect("job_platform.db")
+    c = conn.cursor()
+    c.execute("SELECT status, COUNT(*) FROM applications GROUP BY status")
+    data = c.fetchall()
+    statuses = [row[0] for row in data]
+    counts = [row[1] for row in data]
+    st.bar_chart(data=counts)
+    for status, count in data:
+        st.write(f"{status}: {count}")
+    conn.close()
+
+def recruiter_dashboard():
+    menu = st.sidebar.radio("Navigation", 
+                            ["Post Job", "View Posted Jobs", "Manage Applications", "Analytics", "Logout"])
+    if menu == "Post Job":
+        recruiter_post_job()
+    elif menu == "View Posted Jobs":
+        recruiter_view_jobs()
+    elif menu == "Manage Applications":
+        recruiter_manage_applications()
+    elif menu == "Analytics":
+        recruiter_analytics()
+    elif menu == "Logout":
+        logout()
+
+# ---------------------------
+# Main App
+# ---------------------------
+def main():
+    st.set_page_config(page_title="AI-Powered Job Platform", layout="wide")
+    init_db()
+    if "user" not in st.session_state:
+        auth_mode = st.sidebar.selectbox("Choose Option", ["Login", "Sign Up"])
+        if auth_mode == "Login":
+            login_page()
+        else:
+            signup_page()
+    else:
+        st.sidebar.write(f"Logged in as {st.session_state.user['name']} ({st.session_state.user['role']})")
+        if st.session_state.user['role'] == "Applicant":
+            applicant_dashboard()
+        else:
+            recruiter_dashboard()
 
 if __name__ == "__main__":
-    main() 
+    main()
