@@ -9,16 +9,19 @@ import cohere
 import streamlit as st
 
 # Cohere API setup (ensure you have a valid API key)
-cohere_api_key = st.secrets["API"]  # Make sure this is valid
-try:
-    co = cohere.Client(cohere_api_key)
-except Exception as e:
-    st.error(f"Error initializing Cohere API: {e}")
-    co = None
+cohere_api_key = st.secrets.get("API", "")
+if cohere_api_key:
+    try:
+        co = cohere.Client(cohere_api_key)
+    except Exception as e:
+        st.error(f"Error initializing Cohere API: {e}")
+        co = None
+else:
+    st.error("Cohere API key is missing.")
 
 # Email Settings (configure your email provider)
-EMAIL_ADDRESS = st.secrets["EMAIL-ADDRESS"]
-EMAIL_PASSWORD = st.secrets["EMAIL-PASSWORD"]
+EMAIL_ADDRESS = st.secrets.get("EMAIL-ADDRESS", "")
+EMAIL_PASSWORD = st.secrets.get("EMAIL-PASSWORD", "")
 SMTP_SERVER = "smtp.example.com"
 SMTP_PORT = 587
 
@@ -275,32 +278,25 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         for job in jobs:
             st.write(f"**{job[2]}** - {job[3]}")
             apply_button = st.button(f"Apply for {job[2]}", key=f"apply_{job[0]}")
-
             if apply_button:
-                # Store the job ID and description in session state for further use
-                st.session_state["current_job_id"] = job[0]
-                st.session_state["job_description"] = job[3]
-                cv_file = st.file_uploader("Upload Your CV", type=["pdf", "docx"])
-
+                st.session_state["job_id"] = job[0]
+                cv_file = st.file_uploader("Upload your CV", type=["pdf", "docx"])
                 if cv_file:
                     cv_text = extract_text_from_cv(cv_file)
-                    cv_summary = generate_cv_summary(cv_text)
-                    st.session_state["cv_summary"] = cv_summary
+                    summary = generate_cv_summary(cv_text)
+                    interview_questions = generate_interview_questions(summary, job[3])
 
-                    # Display interview questions as static text (uneditable)
-                    interview_questions = generate_interview_questions(st.session_state["cv_summary"], st.session_state["job_description"])
-                    st.markdown("### Interview Questions")
-                    st.text(interview_questions)  # Display questions as static text
-
-                    st.text_area("Enter Your Interview Responses", height=300)  # Allow answers input
-
-                    if st.button("Submit Responses"):
-                        # Ensure responses are processed without refresh
-                        responses = st.session_state["responses"]
-                        assessment_result = assess_application(cv_text, st.session_state["job_description"], responses.split("\n"))
-                        st.success(f"Assessment Result: {assessment_result}")
-
-                        # Save the application record
-                        c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
-                                  (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", responses, assessment_result))
+                    st.subheader("CV Summary:")
+                    st.write(summary)
+                    st.subheader("Suggested Interview Questions:")
+                    st.write(interview_questions)
+                    responses = st.text_area("Your interview responses:", "")
+                    if st.button("Submit Application"):
+                        # Save the application data
+                        c.execute("INSERT INTO applications (applicant_id, job_id, responses) VALUES (?, ?, ?)",
+                                  (st.session_state["user"][0], job[0], responses))
                         conn.commit()
+                        st.success("Application submitted!")
+                        send_email("Application Confirmation", st.session_state["user"][2],
+                                   f"Your application for the position '{job[2]}' has been submitted successfully.")
+
