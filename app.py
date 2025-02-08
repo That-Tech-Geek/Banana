@@ -125,19 +125,39 @@ def login_page():
     st.title("Login")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
+    
     if st.button("Login"):
-        conn = sqlite3.connect("job_platform.db")
-        c = conn.cursor()
+        # Ensure both fields are provided
+        if not email or not password:
+            st.error("Please provide both email and password.")
+            return
+
+        # Hash the password for comparison
         hashed = hash_password(password)
-        c.execute("SELECT id, email, role, name FROM users WHERE email = ? AND password = ?", (email, hashed))
-        user = c.fetchone()
-        conn.close()
-        if user:
-            st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": user[3]}
-            st.success("Logged in successfully!")
-            st.experimental_rerun()
-        else:
-            st.error("Invalid credentials.")
+        
+        try:
+            # Open database connection
+            conn = sqlite3.connect("job_platform.db")
+            c = conn.cursor()
+
+            # Debug: output the values being used for login
+            st.write(f"DEBUG: Attempting login with email: {email} and hashed password: {hashed}")
+
+            # Execute the query using parameterized inputs
+            c.execute("SELECT id, email, role, name FROM users WHERE email = ? AND password = ?", (email, hashed))
+            user = c.fetchone()
+            conn.close()
+
+            if user:
+                st.session_state.user = {"id": user[0], "email": user[1], "role": user[2], "name": user[3]}
+                st.success("Logged in successfully!")
+                st.experimental_rerun()
+            else:
+                st.error("Invalid credentials. Please check your email and password.")
+
+        except Exception as e:
+            st.error(f"An error occurred during login: {e}")
+
 
 def signup_page():
     st.title("Sign Up")
