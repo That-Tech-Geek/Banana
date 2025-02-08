@@ -13,13 +13,12 @@ import datetime
 # ---------------------------
 # Helper Functions & DB Setup
 # ---------------------------
-
 def init_db():
     conn = sqlite3.connect("job_platform.db")
     c = conn.cursor()
-    # Users table: stores basic info and role (Applicant or Recruiter)
+    
+    # Ensure the users table exists before attempting to alter it
     c.execute('''
-        ALTER TABLE users ADD COLUMN name TEXT;
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
@@ -28,6 +27,13 @@ def init_db():
             role TEXT
         )
     ''')
+    
+    # Check if 'name' column exists before adding it
+    c.execute("PRAGMA table_info(users)")
+    columns = [col[1] for col in c.fetchall()]
+    if "name" not in columns:
+        c.execute("ALTER TABLE users ADD COLUMN name TEXT;")
+    
     # Jobs table: includes additional fields for advanced search/filtering
     c.execute('''
         CREATE TABLE IF NOT EXISTS jobs (
@@ -40,6 +46,7 @@ def init_db():
             recruiter_id INTEGER
         )
     ''')
+    
     # Applications table: stores job applications by applicants
     c.execute('''
         CREATE TABLE IF NOT EXISTS applications (
@@ -51,6 +58,7 @@ def init_db():
             applied_on DATETIME
         )
     ''')
+    
     # Referrals table (optional additional feature)
     c.execute('''
         CREATE TABLE IF NOT EXISTS referrals (
@@ -60,9 +68,10 @@ def init_db():
             status TEXT
         )
     ''')
+    
     conn.commit()
     conn.close()
-
+    
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
