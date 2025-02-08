@@ -365,13 +365,19 @@ def recruiter_post_job():
     salary = st.number_input("Salary", value=0)
     remote = st.selectbox("Remote", ["Yes", "No"]) == "Yes"
     if st.button("Post Job"):
-        conn = sqlite3.connect("job_platform.db")
-        c = conn.cursor()
-        c.execute("INSERT INTO jobs (title, description, location, salary, remote, recruiter_id) VALUES (?, ?, ?, ?, ?, ?)",
-                  (title, description, location, salary, remote, st.session_state.user['id']))
-        conn.commit()
-        conn.close()
-        st.success("Job Posted Successfully!")
+        try:
+            conn = sqlite3.connect("job_platform.db")
+            c = conn.cursor()
+            # Convert the boolean 'remote' to an integer (1 for True, 0 for False)
+            c.execute(
+                "INSERT INTO jobs (title, description, location, salary, remote, recruiter_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (title, description, location, salary, int(remote), st.session_state.user['id'])
+            )
+            conn.commit()
+            conn.close()
+            st.success("Job Posted Successfully!")
+        except Exception as e:
+            st.error(f"Error posting job: {e}")
 
 def recruiter_view_jobs():
     st.subheader("Your Posted Jobs")
