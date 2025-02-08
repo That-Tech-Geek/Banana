@@ -56,7 +56,7 @@ def extract_text_from_cv(cv_file):
         pdf_reader = PdfReader(cv_file)
         text = ""
         for page in pdf_reader.pages:
-            text += page.extract_text()
+            text += page.extract_text() or ""
         return text
     elif cv_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         doc = docx.Document(cv_file)
@@ -65,10 +65,10 @@ def extract_text_from_cv(cv_file):
             text += para.text + "\n"
         return text
     else:
-        return "Unsupported file type"
+        st.error("Unsupported file type. Please upload a PDF or DOCX file.")
+        return None
 
 def generate_cv_summary(cv_text):
-    # Generate a summary of the CV using Cohere
     prompt = f"Summarize the following CV:\n\n{cv_text}\n\nSummary:"
     response = co.generate(
         model='xlarge',
@@ -80,7 +80,6 @@ def generate_cv_summary(cv_text):
     return response.generations[0].text.strip()
 
 def generate_questionnaire(cv_summary, job_description):
-    # Generate questions using Cohere based on the CV summary and job description
     prompt = f"Generate a set of interview questions based on the following CV summary and job description.\n\nCV Summary:\n{cv_summary}\n\nJob Description:\n{job_description}\n\nQuestions:"
     response = co.generate(
         model='xlarge',
@@ -137,7 +136,6 @@ elif choice == "Sign Up":
     
     if st.button("Sign Up"):
         try:
-            # Check if the email already exists for the chosen role
             c.execute("SELECT * FROM users WHERE email=? AND role=?", (email, role))
             existing_user = c.fetchone()
             if existing_user:
@@ -239,30 +237,31 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                 if cv_file:
                     # Extract text from CV
                     cv_text = extract_text_from_cv(cv_file)
-                    st.session_state["cv_text"] = cv_text
+                    if cv_text:  # Ensure cv_text is not None
+                        st.session_state["cv_text"] = cv_text
 
-                    # Generate a summary of the CV
-                    cv_summary = generate_cv_summary(cv_text)
-                    st.markdown("### CV Summary")
-                    st.text(cv_summary)  # Display the CV summary
+                        # Generate a summary of the CV
+                        cv_summary = generate_cv_summary(cv_text)
+                        st.markdown("### CV Summary")
+                        st.text(cv_summary)  # Display the CV summary
 
-                    # Generate interview questions based on the CV summary and job description
-                    generated_questions = generate_questionnaire(cv_summary, st.session_state["job_description"])
-                    st.markdown("### Generated Interview Questions")
-                    st.text(generated_questions)  # Display generated questions
+                        # Generate interview questions based on the CV summary and job description
+                        generated_questions = generate_questionnaire(cv_summary, st.session_state["job_description"])
+                        st.markdown("### Generated Interview Questions")
+                        st.text(generated_questions)  # Display generated questions
 
-                    # Allow applicant to input interview responses
-                    interview_responses = st.text_area("Enter Your Interview Responses", height=300)
+                        # Allow applicant to input interview responses
+                        interview_responses = st.text_area("Enter Your Interview Responses", height=300)
 
-                    if st.button("Submit Responses"):
-                        assessment_result = "Assessment Result Placeholder"  # Replace with actual assessment logic
-                        st.success(f"Assessment Result: {assessment_result}")
+                        if st.button("Submit Responses"):
+                            assessment_result = "Assessment Result Placeholder"  # Replace with actual assessment logic
+                            st.success(f"Assessment Result: {assessment_result}")
 
-                        # Save application record
-                        c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
-                                  (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", interview_responses, assessment_result))
-                        conn.commit()
-                        st.success("Application submitted successfully!")
+                            # Save application record
+                            c.execute("INSERT INTO applications (applicant_id, job_id, status, responses, assessment) VALUES (?, ?, ?, ?, ?)",
+                                      (st.session_state["user"][0], st.session_state["current_job_id"], "Applied", interview_responses, assessment_result))
+                            conn.commit()
+                            st.success("Application submitted successfully!")
 
 # Close the database connection when the app ends
 conn.close()
