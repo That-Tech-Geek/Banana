@@ -149,18 +149,17 @@ Interview Questions:
 ...
 15. [Question 15]
 """
-        # Using the Cohere Chat endpoint (note: if your version of the library requires different parameters, adjust accordingly)
+        # Instead of using a 'prompt' parameter, we pass a messages list.
+        messages = [{"role": "user", "content": prompt}]
         response = co.chat(
             model="command-xlarge-chat",  # Adjust model if needed
-            prompt=prompt,
+            messages=messages,
             max_tokens=600,
             temperature=0.7,
             stop_sequences=["\n\n"]
         )
-        # Assume the response is similar to the generate endpoint
         result = response.generations[0].text.strip()
 
-        # Parse the response
         if "Interview Questions:" in result:
             parts = result.split("Interview Questions:")
             summary = parts[0].replace("Summary:", "").strip()
