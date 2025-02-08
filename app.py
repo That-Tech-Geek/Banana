@@ -412,10 +412,10 @@ def main():
             logout()
 
         if st.session_state.user["role"] == "Applicant":
-            applicant_job_listings(
+            applicant_job_listings()
             if "selected_job" in st.session_state:
                 applicant_apply_page()
-            )
+
 # ---------------------------
 # Run the app
 # ---------------------------
