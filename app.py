@@ -9,7 +9,7 @@ import cohere
 import streamlit as st
 
 # Cohere API setup (ensure you have a valid API key)
-cohere_api_key = "your-cohere-api-key"  # Make sure this is valid
+cohere_api_key = st.secrets["API"]  # Make sure this is valid
 try:
     co = cohere.Client(cohere_api_key)
 except Exception as e:
@@ -17,8 +17,8 @@ except Exception as e:
     co = None
 
 # Email Settings (configure your email provider)
-EMAIL_ADDRESS = "your-email@example.com"
-EMAIL_PASSWORD = "your-email-password"
+EMAIL_ADDRESS = st.secrets["EMAIL-ADDRESS"]
+EMAIL_PASSWORD = st.secrets["EMAIL-PASSWORD"]
 SMTP_SERVER = "smtp.example.com"
 SMTP_PORT = 587
 
