@@ -67,11 +67,23 @@ def extract_text_from_cv(cv_file):
     else:
         return "Unsupported file type"
 
-def generate_questionnaire(cv_text, job_description):
-    # Generate questions using Cohere
-    prompt = f"Generate a set of interview questions based on the following CV and job description.\n\nCV:\n{cv_text}\n\nJob Description:\n{job_description}\n\nQuestions:"
+def generate_cv_summary(cv_text):
+    # Generate a summary of the CV using Cohere
+    prompt = f"Summarize the following CV:\n\n{cv_text}\n\nSummary:"
     response = co.generate(
-        model='xlarge',
+        model='command',
+        prompt=prompt,
+        max_tokens=100,
+        temperature=0.7,
+        stop_sequences=["\n"]
+    )
+    return response.generations[0].text.strip()
+
+def generate_questionnaire(cv_summary, job_description):
+    # Generate questions using Cohere based on the CV summary and job description
+    prompt = f"Generate a set of interview questions based on the following CV summary and job description.\n\nCV Summary:\n{cv_summary}\n\nJob Description:\n{job_description}\n\nQuestions:"
+    response = co.generate(
+        model='command',
         prompt=prompt,
         max_tokens=150,
         temperature=0.7,
@@ -96,7 +108,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS jobs (
                 recruiter_id INTEGER,
                 job_title TEXT,
                 job_description TEXT,
-                interview_questions TEXT,
                 FOREIGN KEY (recruiter_id) REFERENCES users (id))''')
 
 c.execute('''CREATE TABLE IF NOT EXISTS applications (
@@ -172,11 +183,10 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         
         job_title = st.text_input("Job Title")
         job_description = st.text_area("Job Description")
-        interview_questions = st.text_area("Interview Questions (comma-separated)")
         
         if st.button("Post Job"):
-            c.execute("INSERT INTO jobs (recruiter_id, job_title, job_description, interview_questions) VALUES (?, ?, ?, ?)",
-                      (st.session_state["user"][0], job_title, job_description, interview_questions))
+            c.execute("INSERT INTO jobs (recruiter_id, job_title, job_description) VALUES (?, ?, ?)",
+                      (st.session_state["user"][0], job_title, job_description))
             conn.commit()
             st.success("Job posted successfully!")
             # Notify all applicants
@@ -230,14 +240,14 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                     cv_text = extract_text_from_cv(cv_file)
                     st.session_state["cv_text"] = cv_text
 
-                    # Generate Interview Questions
-                    interview_questions = job[4]  # Fetch interview questions from the job
-                    st.markdown("### Interview Questions")
-                    st.text(interview_questions)  # Display questions as static text
+                    # Generate a summary of the CV
+                    cv_summary = generate_cv_summary(cv_text)
+                    st.markdown("### CV Summary")
+                    st.text(cv_summary)  # Display the CV summary
 
-                    # Generate additional questionnaire using Cohere
-                    generated_questions = generate_questionnaire(cv_text, st.session_state["job_description"])
-                    st.markdown("### Generated Questionnaire")
+                    # Generate interview questions based on the CV summary and job description
+                    generated_questions = generate_questionnaire(cv_summary, st.session_state["job_description"])
+                    st.markdown("### Generated Interview Questions")
                     st.text(generated_questions)  # Display generated questions
 
                     # Allow applicant to input interview responses
