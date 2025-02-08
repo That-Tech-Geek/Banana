@@ -146,8 +146,6 @@ import streamlit as st
 
 # README content as a string
 readme_content = """
-# 🍌 Banana: Ultimate Job Search Platform
-
 Welcome to Banana, the applicant-centric job search platform of the future.
 
 ## Features
