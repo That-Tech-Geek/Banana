@@ -458,7 +458,7 @@ def main():
             signup_page()
     else:
         st.sidebar.write(f"Logged in as {st.session_state.user['name']} ({st.session_state.user['role']})")
-        if st.session_state.user['role'] == "Applicant"
+        if st.session_state.user['role'] == "Applicant":
             applicant_dashboard()
         else:
             recruiter_dashboard()
