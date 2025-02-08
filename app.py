@@ -78,7 +78,7 @@ def generate_cv_summary(cv_text):
         response = co.generate(
             model="command",
             prompt=prompt,
-            max_tokens=300,
+            max_tokens=3000,
             temperature=0.7
         )
         
@@ -234,7 +234,7 @@ elif choice == "Login":
 if "logged_in" in st.session_state and st.session_state["logged_in"]:
     role = st.session_state["role"]
     username = st.session_state["username"]
-    
+
     st.sidebar.write(f"Logged in as: {username} ({role})")
 
     # Applicant Dashboard
@@ -250,29 +250,30 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
         jobs = fetch_jobs()
         for job in jobs:
             st.write(f"**{job[2]}** - {job[3]}")
-            if st.button(f"Apply for {job[2]}", key=f"apply_{job[0]}"):
-                # Store the job ID in the session state
+            apply_button = st.button(f"Apply for {job[2]}", key=f"apply_{job[0]}")
+            
+            if apply_button:
+                # Store the job ID and description in session state
                 st.session_state["current_job_id"] = job[0]
                 st.session_state["job_description"] = job[3]
                 st.session_state["show_form"] = True
 
         if "show_form" in st.session_state and st.session_state["show_form"]:
-            # CV upload form
             st.subheader("Upload Your CV")
             cv_file = st.file_uploader("Choose your CV", type=["pdf", "docx"])
 
-            if cv_file:
+            if st.button("Submit CV") and cv_file:
                 # Extract CV text
                 cv_text = extract_text_from_cv(cv_file)
                 cv_summary = generate_cv_summary(cv_text)
 
-                st.write("CV Summary:")
+                st.write("### CV Summary")
                 st.write(cv_summary)
 
                 job_description = st.session_state["job_description"]
                 interview_questions = generate_interview_questions(cv_summary, job_description)
 
-                st.subheader("Interview Questions")
+                st.write("### Generated Interview Questions")
                 st.write(interview_questions)
 
                 # Collect responses
