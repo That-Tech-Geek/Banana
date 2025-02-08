@@ -5,8 +5,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import docx
 from PyPDF2 import PdfReader
-import streamlit as st
 import cohere
+import streamlit as st
 
 # Cohere API setup (ensure you have a valid API key)
 cohere_api_key = st.secrets["API"]
@@ -66,6 +66,18 @@ def extract_text_from_cv(cv_file):
         return text
     else:
         return "Unsupported file type"
+
+def generate_questionnaire(cv_text, job_description):
+    # Generate questions using Cohere
+    prompt = f"Generate a set of interview questions based on the following CV and job description.\n\nCV:\n{cv_text}\n\nJob Description:\n{job_description}\n\nQuestions:"
+    response = co.generate(
+        model='xlarge',
+        prompt=prompt,
+        max_tokens=150,
+        temperature=0.7,
+        stop_sequences=["\n"]
+    )
+    return response.generations[0].text.strip()
 
 # Streamlit App: Handling User Login
 menu = ["Home", "Login", "Sign Up"]
@@ -222,6 +234,11 @@ if "logged_in" in st.session_state and st.session_state["logged_in"]:
                     interview_questions = job[4]  # Fetch interview questions from the job
                     st.markdown("### Interview Questions")
                     st.text(interview_questions)  # Display questions as static text
+
+                    # Generate additional questionnaire using Cohere
+                    generated_questions = generate_questionnaire(cv_text, st.session_state["job_description"])
+                    st.markdown("### Generated Questionnaire")
+                    st.text(generated_questions)  # Display generated questions
 
                     # Allow applicant to input interview responses
                     interview_responses = st.text_area("Enter Your Interview Responses", height=300)
