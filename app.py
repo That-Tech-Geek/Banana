@@ -133,7 +133,7 @@ def summarize_cv(cv_text):
 
 def generate_interview_questions(cv_summary, job_desc):
     try:
-        co = cohere.Client(st.secrets["COHERE_API_KEY"])
+        co = cohere.Client(st.secrets["API"])
         prompt = f"Based on this CV summary: {cv_summary} and job description: {job_desc}, generate relevant interview questions."
         response = co.generate(prompt=prompt, max_tokens=100)
         return response.generations[0].text.strip()
