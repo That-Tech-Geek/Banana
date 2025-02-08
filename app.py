@@ -86,8 +86,8 @@ def generate_cv_summary(cv_text):
             return response.generations[0].text.strip()  # Extract summary text
         else:
             return "No summary generated, please check the input data."
-    except cohere.CohereError as e:
-        st.error(f"Cohere API error: {e}")
+    except Exception as e:  # Catching a more general exception
+        st.error(f"Error generating CV summary: {e}")
         return "Error generating summary. Please try again later."
 
 # Generate Interview Questions using Cohere based on CV Summary and Job Description
@@ -108,8 +108,8 @@ def generate_interview_questions(summary, job_description):
             return response.generations[0].text.strip()  # Extract text from the first generation
         else:
             return "No questions generated, please check the input data."
-    except cohere.CohereError as e:
-        st.error(f"Cohere API error: {e}")
+    except Exception as e:  # Catching a more general exception
+        st.error(f"Error generating interview questions: {e}")
         return "Error generating interview questions. Please try again later."
 
 # Simple Applicant Assessment Logic (This can be enhanced)
@@ -207,8 +207,8 @@ elif choice == "Sign Up":
                     c.execute("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)",
                               (username, email, hash_password(password), role))
                     conn.commit()
-                    send_email("Job Application Confirmation", st.session_state["user"][2],
-                    f"Hi {st.session_state['user'][1]},\n\nYou have successfully applied for the job '{job[2]}'. Good luck!")
+                    send_email("Job Application Confirmation", email,
+                    f"Hi {username},\n\nYou have successfully created an account as a {role}. Good luck!")
 
         except sqlite3.IntegrityError:
             st.error("Error creating account. Please try again.")
