@@ -89,7 +89,7 @@ def hash_password(password):
 
 def send_email(subject, body, recipient):
     try:
-        sender_email = st.secrets["EMAIL-ADDRESS"]
+        sender_email = st.secrets["EMAIL"]
         sender_password = st.secrets["EMAIL_PASSWORD"]
         msg = MIMEText(body)
         msg["Subject"] = subject
@@ -128,7 +128,7 @@ def generate_cv_summary_and_interview_questions(cv_text, job_desc):
     of the CV and 15 interview questions based on the CV and job description.
     """
     try:
-        co = cohere.Client(st.secrets["API"])
+        co = cohere.Client(st.secrets["COHERE_API_KEY"])
         prompt = f"""Given the following CV text and Job Description, please provide a detailed 3-paragraph summary of the candidate's qualifications and skills. Then, based on this summary and the provided Job Description, generate 15 insightful interview questions for the candidate.
 
 CV:
@@ -149,7 +149,7 @@ Interview Questions:
 15. [Question 15]
 """
         response = co.generate(
-            model='command-xlarge-nightly',  # Use an appropriate model available in your plan
+            model='command-xlarge-nightly',  # Adjust the model as needed
             prompt=prompt,
             max_tokens=600,
             temperature=0.7,
@@ -185,6 +185,40 @@ Interview Questions:
     except Exception as e:
         st.error(f"Error generating summary and interview questions: {e}")
         return "", []
+
+def evaluate_candidate_fit(cv_text, job_desc, candidate_answers_text):
+    """
+    Uses Cohere's generation endpoint to evaluate the candidate's overall fit
+    for the role based on their interview answers, the provided CV, and job description.
+    """
+    try:
+        co = cohere.Client(st.secrets["COHERE_API_KEY"])
+        prompt = f"""Using the candidate's CV, Job Description, and the following interview answers, evaluate the candidate's overall fit for the role. Provide a rating between 1 and 10 and a brief explanation for the evaluation.
+
+CV:
+{cv_text}
+
+Job Description:
+{job_desc}
+
+Interview Answers:
+{candidate_answers_text}
+
+Evaluation:"""
+        response = co.generate(
+            model='command-xlarge-nightly',
+            prompt=prompt,
+            max_tokens=200,
+            temperature=0.7,
+            k=0,
+            p=0.75,
+            stop_sequences=["\n"]
+        )
+        evaluation = response.generations[0].text.strip()
+        return evaluation
+    except Exception as e:
+        st.error(f"Error evaluating candidate fit: {e}")
+        return ""
 
 # ---------------------------
 # Authentication Pages
@@ -319,17 +353,38 @@ def applicant_apply_page():
     if uploaded_cv:
         cv_text = extract_text_from_file(uploaded_cv)
         if cv_text:
+            # Generate CV summary and interview questions from the CV and JD.
             cv_summary, interview_questions = generate_cv_summary_and_interview_questions(cv_text, job[2])
             st.text_area("CV Summary", value=cv_summary, height=150)
-            st.write("Suggested Interview Questions:")
+            st.write("### Suggested Interview Questions:")
             for idx, question in enumerate(interview_questions, 1):
                 st.write(f"{idx}. {question}")
-
+            
+            st.write("---")
+            st.write("### Interview Simulation")
+            # Create a form for the candidate to answer each interview question.
+            with st.form("interview_answers_form"):
+                candidate_answers = {}
+                for idx, question in enumerate(interview_questions, start=1):
+                    candidate_answers[idx] = st.text_area(f"Answer for question {idx}:", key=f"answer_{idx}")
+                submit_answers = st.form_submit_button("Submit Interview Answers")
+                if submit_answers:
+                    # Combine the questions and answers into one text block.
+                    answers_text = ""
+                    for idx in range(1, len(interview_questions) + 1):
+                        answers_text += f"Question {idx}: {interview_questions[idx-1]}\nAnswer: {candidate_answers[idx]}\n\n"
+                    evaluation = evaluate_candidate_fit(cv_text, job[2], answers_text)
+                    st.subheader("Evaluation of your Interview Answers:")
+                    st.write(evaluation)
+            
+            # Final application submission.
             if st.button("Submit Application"):
                 conn = sqlite3.connect("job_platform.db")
                 c = conn.cursor()
-                c.execute("INSERT INTO applications (job_id, applicant_id, cv_text, status, applied_on) VALUES (?, ?, ?, ?, ?)", 
-                          (job[0], st.session_state.user["id"], cv_text, "Pending", datetime.datetime.now()))
+                c.execute(
+                    "INSERT INTO applications (job_id, applicant_id, cv_text, status, applied_on) VALUES (?, ?, ?, ?, ?)", 
+                    (job[0], st.session_state.user["id"], cv_text, "Pending", datetime.datetime.now())
+                )
                 conn.commit()
                 conn.close()
                 st.success("Application Submitted!")
@@ -357,7 +412,7 @@ def main():
             logout()
 
         if st.session_state.user["role"] == "Applicant":
-            applicant_job_listings()
+            applicant_job_listings(
             if "selected_job" in st.session_state:
                 applicant_apply_page()
 
