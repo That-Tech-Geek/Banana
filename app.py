@@ -89,7 +89,7 @@ def hash_password(password):
 
 def send_email(subject, body, recipient):
     try:
-        sender_email = st.secrets["EMAIL-ADDRESS"]
+        sender_email = st.secrets["EMAIL"]
         sender_password = st.secrets["EMAIL_PASSWORD"]
         msg = MIMEText(body)
         msg["Subject"] = subject
@@ -123,28 +123,65 @@ def extract_text_from_file(uploaded_file):
     return ""
 
 def generate_cv_summary_and_interview_questions(cv_text, job_desc):
+    """
+    Uses Cohere's generation endpoint to produce a 3-paragraph summary
+    of the CV and 15 interview questions based on the CV and job description.
+    """
     try:
-        co = cohere.Client(st.secrets["API"])
-        
-        # Prompt for CV summary and interview questions generation
-        prompt = f"""
-        Given the following CV text and Job Description, please provide a detailed 3-paragraph summary of the candidate's qualifications and skills. Then, based on this summary and the provided Job Description, generate 15 insightful interview questions for the candidate.
+        co = cohere.Client(st.secrets["COHERE_API_KEY"])
+        prompt = f"""Given the following CV text and Job Description, please provide a detailed 3-paragraph summary of the candidate's qualifications and skills. Then, based on this summary and the provided Job Description, generate 15 insightful interview questions for the candidate.
 
-        CV: {cv_text}
-        
-        Job Description: {job_desc}
-        """
+CV:
+{cv_text}
 
-        # Call Cohere's command chatbot for processing
-        response = co.chat(messages=[{"role": "user", "content": prompt}])
+Job Description:
+{job_desc}
+
+Please output your answer in the following format:
+
+Summary:
+[Your 3-paragraph summary here]
+
+Interview Questions:
+1. [Question 1]
+2. [Question 2]
+...
+15. [Question 15]
+"""
+        response = co.generate(
+            model='command-xlarge-nightly',  # Use an appropriate model available in your plan
+            prompt=prompt,
+            max_tokens=600,
+            temperature=0.7,
+            k=0,
+            p=0.75,
+            stop_sequences=["\n\n"]
+        )
         result = response.generations[0].text.strip()
 
-        # Separate summary and interview questions
-        split_result = result.split("\nInterview Questions:")
-        summary = split_result[0].strip()
-        interview_questions = split_result[1].strip().split("\n") if len(split_result) > 1 else []
-
-        return summary, interview_questions
+        if "Interview Questions:" in result:
+            parts = result.split("Interview Questions:")
+            summary = parts[0].replace("Summary:", "").strip()
+            questions_text = parts[1].strip()
+            questions = []
+            for line in questions_text.splitlines():
+                line = line.strip()
+                if line:
+                    # Remove numbering if present
+                    if '.' in line:
+                        try:
+                            _num, question = line.split('.', 1)
+                            question = question.strip()
+                            questions.append(question)
+                        except Exception:
+                            questions.append(line)
+                    else:
+                        questions.append(line)
+            interview_questions = questions[:15]
+            return summary, interview_questions
+        else:
+            # If the output is not in the expected format, return the entire result as the summary.
+            return result, []
     except Exception as e:
         st.error(f"Error generating summary and interview questions: {e}")
         return "", []
@@ -153,7 +190,6 @@ def generate_cv_summary_and_interview_questions(cv_text, job_desc):
 # Authentication Pages
 # ---------------------------
 def login_page():
-    """Handles user login for the job platform."""
     st.title("Login")
 
     email = st.text_input("Email")
@@ -196,7 +232,7 @@ def login_page():
                     "role": user[3]
                 }
                 st.success(f"✅ Welcome back, {user[1]}!")
-                st.rerun()  # Updated from experimental_rerun()
+                st.rerun()
             else:
                 st.error("❌ Invalid email or password. Please try again.")
 
@@ -241,7 +277,6 @@ def applicant_job_listings():
     salary_min = st.number_input("Minimum Salary", value=0)
     salary_max = st.number_input("Maximum Salary", value=1000000)
     
-    # Only show jobs posted by recruiter accounts
     query = """
     SELECT jobs.id, jobs.title, jobs.description, jobs.location, jobs.salary, jobs.remote, jobs.recruiter_id
     FROM jobs
@@ -280,7 +315,7 @@ def applicant_apply_page():
         return
     st.subheader(f"Apply for {job[1]}")
     st.write(job[2])
-    uploaded_cv = st.file_uploader("Upload CV", type=["pdf", "docx"])
+    uploaded_cv = st.file_uploader("Upload CV (PDF/DOCX)", type=["pdf", "docx"])
     if uploaded_cv:
         cv_text = extract_text_from_file(uploaded_cv)
         if cv_text:
@@ -307,11 +342,9 @@ def applicant_apply_page():
 def main():
     init_db()
 
-    # Handle user sessions
     if "user" not in st.session_state:
         st.sidebar.title("Job Platform")
         option = st.sidebar.selectbox("Select an action", ["Login", "Sign Up"])
-
         if option == "Login":
             login_page()
         elif option == "Sign Up":
@@ -323,7 +356,6 @@ def main():
         if st.sidebar.button("Logout"):
             logout()
 
-        # Applicant Dashboard
         if st.session_state.user["role"] == "Applicant":
             applicant_job_listings()
             if "selected_job" in st.session_state:
