@@ -141,9 +141,6 @@ def assess_application(cv_text, job_description, interview_responses):
         return "Not selected"
 
 # Streamlit App
-st.title("🍌 Banana: Ultimate Job Search Platform")
-import streamlit as st
-
 # README content as a string
 readme_content = """
 Welcome to Banana, the applicant-centric job search platform of the future.
