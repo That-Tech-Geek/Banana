@@ -17,7 +17,7 @@ def init_db():
     conn = sqlite3.connect("job_platform.db")
     c = conn.cursor()
     
-    # Ensure the users table exists
+    # Ensure the users table exists before attempting to alter it
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,16 +27,14 @@ def init_db():
             role TEXT
         )
     ''')
-    conn.commit()
     
-    # Check if the 'name' column exists in users; add it if missing
+    # Check if 'name' column exists before adding it
     c.execute("PRAGMA table_info(users)")
-    user_columns = [col[1] for col in c.fetchall()]
-    if "name" not in user_columns:
+    columns = [col[1] for col in c.fetchall()]
+    if "name" not in columns:
         c.execute("ALTER TABLE users ADD COLUMN name TEXT;")
-    conn.commit()
     
-    # Create the jobs table if it doesn't exist
+    # Jobs table: includes job details
     c.execute('''
         CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,18 +42,9 @@ def init_db():
             description TEXT,
             location TEXT,
             salary INTEGER,
-            remote BOOLEAN,
-            recruiter_id INTEGER
+            remote BOOLEAN
         )
     ''')
-    conn.commit()
-    
-    # Check if the 'location' column exists in jobs; add it if missing
-    c.execute("PRAGMA table_info(jobs)")
-    jobs_columns = [col[1] for col in c.fetchall()]
-    if "location" not in jobs_columns:
-        c.execute("ALTER TABLE jobs ADD COLUMN location TEXT;")
-    conn.commit()
     
     # Applications table: stores job applications by applicants
     c.execute('''
