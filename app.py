@@ -205,7 +205,7 @@ def signup_page():
 def logout():
     if "user" in st.session_state:
         del st.session_state.user
-    st.experimental_rerun()
+    st.rerun()
 
 # ---------------------------
 # Applicant Pages & Dashboard
@@ -221,18 +221,24 @@ def applicant_job_listings():
     salary_min = st.number_input("Minimum Salary", value=0)
     salary_max = st.number_input("Maximum Salary", value=1000000)
     
-    query = "SELECT * FROM jobs WHERE 1=1"
+    # Only show jobs posted by recruiter accounts
+    query = """
+    SELECT jobs.id, jobs.title, jobs.description, jobs.location, jobs.salary, jobs.remote, jobs.recruiter_id
+    FROM jobs
+    JOIN users ON jobs.recruiter_id = users.id
+    WHERE users.role = 'Recruiter'
+    """
     params = []
     if title_filter:
-        query += " AND title LIKE ?"
+        query += " AND jobs.title LIKE ?"
         params.append(f"%{title_filter}%")
     if location_filter:
-        query += " AND location LIKE ?"
+        query += " AND jobs.location LIKE ?"
         params.append(f"%{location_filter}%")
     if remote_filter != "Any":
-        query += " AND remote = ?"
+        query += " AND jobs.remote = ?"
         params.append(1 if remote_filter == "Yes" else 0)
-    query += " AND salary BETWEEN ? AND ?"
+    query += " AND jobs.salary BETWEEN ? AND ?"
     params.append(salary_min)
     params.append(salary_max)
     
@@ -244,7 +250,7 @@ def applicant_job_listings():
         st.write(f"Location: {job[3]} | Salary: {job[4]} | Remote: {'Yes' if job[5] else 'No'}")
         if st.button(f"Apply for {job[1]}", key=f"apply_{job[0]}"):
             st.session_state.selected_job = job
-            st.experimental_rerun()
+            st.rerun()
     conn.close()
 
 def applicant_apply_page():
@@ -274,7 +280,7 @@ def applicant_apply_page():
         st.success("Application Submitted Successfully!")
         if "selected_job" in st.session_state:
             del st.session_state.selected_job
-        st.experimental_rerun()
+        st.rerun()
     st.write("---")
     st.subheader("Interview Preparation")
     st.write(generate_interview_questions(summarize_cv("dummy"), job[2]))  # demo question if none generated
@@ -452,7 +458,7 @@ def main():
             signup_page()
     else:
         st.sidebar.write(f"Logged in as {st.session_state.user['name']} ({st.session_state.user['role']})")
-        if st.session_state.user['role'] == "Applicant":
+        if st.session_state.user['role'] == "Applicant"
             applicant_dashboard()
         else:
             recruiter_dashboard()
