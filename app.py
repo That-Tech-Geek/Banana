@@ -142,6 +142,34 @@ def assess_application(cv_text, job_description, interview_responses):
 
 # Streamlit App
 st.title("🍌 Banana: Ultimate Job Search Platform")
+import streamlit as st
+
+# README content as a string
+readme_content = """
+# 🍌 Banana: Ultimate Job Search Platform
+
+Welcome to Banana, the applicant-centric job search platform of the future.
+
+## Features
+
+- **Applicant-Centric Design**: Focused on providing a seamless experience for job seekers.
+- **AI-Powered Assessments**: Utilize advanced AI to assess applications and provide feedback.
+- **Interactive Interface**: Engage with an intuitive and user-friendly interface.
+
+## How We Differ from Conventional Job Search Sites
+
+Unlike traditional job search platforms, Banana offers:
+
+- **Personalized Job Matching**: Tailored job recommendations based on your profile and preferences.
+- **Real-Time Application Tracking**: Monitor the status of your applications in real-time.
+- **Skill Development Resources**: Access resources to enhance your skills and improve your employability.
+
+Join us today and take the next step in your career journey with Banana!
+"""
+
+# Display the content on the homepage
+st.title("🍌 Banana: Ultimate Job Search Platform")
+st.markdown(readme_content)
 
 # Menu Navigation
 menu = ["Home", "Login", "Sign Up"]
