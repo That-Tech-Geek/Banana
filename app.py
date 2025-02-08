@@ -27,14 +27,16 @@ def init_db():
             role TEXT
         )
     ''')
+    conn.commit()
     
-    # Check if 'name' column exists before adding it
+    # Check if 'name' column exists in users; add it if missing
     c.execute("PRAGMA table_info(users)")
-    columns = [col[1] for col in c.fetchall()]
-    if "name" not in columns:
+    user_columns = [col[1] for col in c.fetchall()]
+    if "name" not in user_columns:
         c.execute("ALTER TABLE users ADD COLUMN name TEXT;")
+    conn.commit()
     
-    # Jobs table: includes job details
+    # Create the jobs table if it doesn't exist with all required columns
     c.execute('''
         CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,6 +47,18 @@ def init_db():
             remote BOOLEAN
         )
     ''')
+    conn.commit()
+    
+    # Check if required columns exist in jobs table; add any missing ones.
+    c.execute("PRAGMA table_info(jobs)")
+    jobs_columns = [col[1] for col in c.fetchall()]
+    if "location" not in jobs_columns:
+        c.execute("ALTER TABLE jobs ADD COLUMN location TEXT;")
+    if "salary" not in jobs_columns:
+        c.execute("ALTER TABLE jobs ADD COLUMN salary INTEGER;")
+    if "remote" not in jobs_columns:
+        c.execute("ALTER TABLE jobs ADD COLUMN remote BOOLEAN;")
+    conn.commit()
     
     # Applications table: stores job applications by applicants
     c.execute('''
