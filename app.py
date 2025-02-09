@@ -27,14 +27,14 @@ def init_db():
     ''')
     conn.commit()
     
-    # Ensure the "name" column exists
+    # Ensure the "name" column exists (for legacy DBs)
     c.execute("PRAGMA table_info(users)")
     user_columns = [col[1] for col in c.fetchall()]
     if "name" not in user_columns:
         c.execute("ALTER TABLE users ADD COLUMN name TEXT;")
     conn.commit()
     
-    # Jobs table
+    # Jobs table (with recruiter_id added)
     c.execute('''
         CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,12 +42,13 @@ def init_db():
             description TEXT,
             location TEXT,
             salary INTEGER,
-            remote BOOLEAN
+            remote BOOLEAN,
+            recruiter_id INTEGER
         )
     ''')
     conn.commit()
     
-    # Ensure required columns in jobs table
+    # In case jobs table exists without recruiter_id, add it:
     c.execute("PRAGMA table_info(jobs)")
     jobs_columns = [col[1] for col in c.fetchall()]
     if "location" not in jobs_columns:
@@ -56,6 +57,8 @@ def init_db():
         c.execute("ALTER TABLE jobs ADD COLUMN salary INTEGER;")
     if "remote" not in jobs_columns:
         c.execute("ALTER TABLE jobs ADD COLUMN remote BOOLEAN;")
+    if "recruiter_id" not in jobs_columns:
+        c.execute("ALTER TABLE jobs ADD COLUMN recruiter_id INTEGER;")
     conn.commit()
     
     # Applications table
@@ -256,7 +259,7 @@ def login_page():
                     "role": user[3]
                 }
                 st.success(f"✅ Welcome back, {user[1]}!")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("❌ Invalid email or password. Please try again.")
         except sqlite3.Error as e:
@@ -285,7 +288,7 @@ def signup_page():
 def logout():
     if "user" in st.session_state:
         del st.session_state.user
-    st.rerun()
+    st.experimental_rerun()
 
 # ---------------------------
 # Applicant Pages & Dashboard
@@ -329,7 +332,7 @@ def applicant_job_listings():
         st.write(f"Location: {job[3]} | Salary: {job[4]} | Remote: {'Yes' if job[5] else 'No'}")
         if st.button(f"Apply for {job[1]}", key=f"apply_{job[0]}"):
             st.session_state.selected_job = job
-            st.rerun()
+            st.experimental_rerun()
     conn.close()
 
 def applicant_apply_page():
@@ -376,14 +379,21 @@ def applicant_apply_page():
                 conn.close()
                 st.success("Application Submitted!")
                 st.session_state.selected_job = None
-                st.rerun()
+                st.experimental_rerun()
 
 # ---------------------------
 # Main Streamlit Application
 # ---------------------------
 def main():
     init_db()
+    # Ensure session state variables are initialized
     if "user" not in st.session_state:
+        st.session_state.user = None
+    if "selected_job" not in st.session_state:
+        st.session_state.selected_job = None
+
+    # Sidebar navigation
+    if st.session_state.user is None:
         st.sidebar.title("Job Platform")
         option = st.sidebar.selectbox("Select an action", ["Login", "Sign Up"])
         if option == "Login":
@@ -396,13 +406,15 @@ def main():
         st.sidebar.write(f"Role: {st.session_state.user['role']}")
         if st.sidebar.button("Logout"):
             logout()
+        # Applicant dashboard
         if st.session_state.user["role"] == "Applicant":
             applicant_job_listings()
-            if "selected_job" in st.session_state:
+            if st.session_state.selected_job:
                 applicant_apply_page()
+        # Recruiter dashboard (placeholder)
+        else:
+            st.subheader("Recruiter Dashboard")
+            st.write("Recruiter functionalities are coming soon!")
 
-# ---------------------------
-# Run the App
-# ---------------------------
 if __name__ == "__main__":
     main()
